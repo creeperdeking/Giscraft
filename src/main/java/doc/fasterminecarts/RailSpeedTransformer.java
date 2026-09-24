@@ -23,6 +23,8 @@ public final class RailSpeedTransformer implements IClassTransformer {
             "net.minecraft.client.model.ModelLargeChest";
     private static final String TARGET_CHEST_RENDERER =
             "net.minecraft.client.renderer.tileentity.TileEntityChestRenderer";
+    private static final String TARGET_PIG_CONTROLLER =
+            "net.minecraft.entity.ai.EntityAIControlledByPlayer";
     private static final String TARGET_METHOD = "getRailMaxSpeed";
     private static final String TARGET_DESC =
             "(Lnet/minecraft/world/World;Lnet/minecraft/entity/item/EntityMinecart;III)F";
@@ -51,6 +53,10 @@ public final class RailSpeedTransformer implements IClassTransformer {
 
         if (TARGET_CHEST_RENDERER.equals(transformedName)) {
             return transformChestLidAngle(basicClass);
+        }
+
+        if (TARGET_PIG_CONTROLLER.equals(transformedName)) {
+            return transformPigMovement(basicClass);
         }
 
         return basicClass;
@@ -234,6 +240,61 @@ public final class RailSpeedTransformer implements IClassTransformer {
         if (!patched) {
             throw new RuntimeException(
                     "FasterVanillaMinecarts could not limit the chest lid angle.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformPigMovement(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            boolean expectedName = "updateTask".equals(method.name)
+                    || "func_75246_d".equals(method.name);
+
+            if (!expectedName || !"()V".equals(method.desc)) {
+                continue;
+            }
+
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null;
+                 instruction = instruction.getNext()) {
+
+                if (!(instruction instanceof MethodInsnNode)) {
+                    continue;
+                }
+
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                boolean movementCall = "moveEntityWithHeading".equals(call.name)
+                        || "func_70612_e".equals(call.name);
+
+                if (!movementCall || !"(FF)V".equals(call.desc)) {
+                    continue;
+                }
+
+                method.instructions.set(
+                        call,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                "doc/fasterminecarts/PigSpeedHandler",
+                                "moveControlledPig",
+                                "(Lnet/minecraft/entity/EntityLiving;FF)V",
+                                false));
+                patched = true;
+                break;
+            }
+
+            break;
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "FasterVanillaMinecarts could not patch controlled pig movement.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);

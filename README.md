@@ -10,10 +10,12 @@ It does **not** replace minecarts, add rails, change powered-rail acceleration, 
 
 Custom rail blocks that override `getRailMaxSpeed` keep their own speed. Custom rails that simply inherit Forge's default rail speed will inherit this configured value too.
 
-Ridden pigs now accelerate smoothly for one second until they reach a
-consistent speed of 8 blocks per second. Vanilla pig steering and vertical
-movement are left intact, and the acceleration resets whenever the rider
-dismounts.
+Ridden pigs accelerate smoothly for one second until they reach a consistent
+speed of 8 blocks per second, but only while the rider holds a carrot on a
+stick; otherwise they stop. Vanilla pig steering and vertical movement are
+left intact. While ridden, pigs can automatically step onto one-block-tall
+obstacles. Their normal step height and acceleration state are restored
+whenever the rider dismounts.
 
 ## Config
 
@@ -52,7 +54,11 @@ Put the jar in the normal `mods` folder on both client and server.
 
 ## Implementation note
 
-This is a coremod because normal Forge configuration/events can raise the minecart's own speed cap, but vanilla rail blocks still impose their separate 0.4 blocks/tick limit. The ASM transformer changes only that default rail limit.
+This is a coremod because normal Forge configuration/events can raise the
+minecart's own speed cap, but vanilla rail blocks still impose their separate
+0.4 blocks/tick limit. The ASM transformer also routes vanilla's controlled-pig
+movement call through the mod so vanilla acceleration cannot exceed the pig's
+fixed limit.
 
 ## How to build
 
