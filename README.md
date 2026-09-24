@@ -1,6 +1,6 @@
 # Faster Vanilla Minecarts — Forge 1.7.10
 
-A deliberately tiny Forge 1.7.10 coremod that changes the default rail speed limit used by vanilla minecarts.
+A Forge 1.7.10 coremod that improves vanilla minecart and ridden-pig movement.
 
 ## What it changes
 
@@ -9,6 +9,11 @@ Forge 1.7.10's `BlockRailBase#getRailMaxSpeed` returns `0.4` blocks/tick by defa
 It does **not** replace minecarts, add rails, change powered-rail acceleration, or change recipes.
 
 Custom rail blocks that override `getRailMaxSpeed` keep their own speed. Custom rails that simply inherit Forge's default rail speed will inherit this configured value too.
+
+Ridden pigs now accelerate smoothly for one second until they reach a
+consistent speed of 8 blocks per second. Vanilla pig steering and vertical
+movement are left intact, and the acceleration resets whenever the rider
+dismounts.
 
 ## Config
 
@@ -48,3 +53,17 @@ Put the jar in the normal `mods` folder on both client and server.
 ## Implementation note
 
 This is a coremod because normal Forge configuration/events can raise the minecart's own speed cap, but vanilla rail blocks still impose their separate 0.4 blocks/tick limit. The ASM transformer changes only that default rail limit.
+
+## How to build
+
+```bash
+.\gradlew.bat build
+```
+
+### To run
+
+```bash
+.\gradlew.bat runClient --debug-jvm
+```
+
+Press Ctrl+Shift+D, choose Attach to Minecraft (5005), then press F5.
