@@ -24,7 +24,45 @@ minecraft {
     runDir = 'run'
 }
 
+def owgJar = file(project.findProperty('owgJar') ?: 'C:/Users/alexi/curseforge/minecraft/Instances/1.7.10/mods/NostalgiaGenerator-1.0.0-1.7.10.jar')
+
+task compileNoiseStub(type: JavaCompile) {
+    source = fileTree(dir: 'preview-src/stub', include: '**/*.java')
+    classpath = files()
+    destinationDir = file("$buildDir/noise-stub")
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+    options.encoding = 'UTF-8'
+}
+
+task compileTerrainPreview(type: JavaCompile) {
+    dependsOn compileNoiseStub
+    onlyIf { owgJar.isFile() }
+    source = fileTree(dir: 'preview-src', include: 'doc/**/*.java')
+    classpath = files("$buildDir/noise-stub", owgJar)
+    destinationDir = file("$buildDir/terrain-preview")
+    sourceCompatibility = '1.8'
+    targetCompatibility = '1.8'
+    options.encoding = 'UTF-8'
+}
+
+task packTerrainPreview(type: Copy) {
+    dependsOn compileTerrainPreview
+    onlyIf { owgJar.isFile() }
+    into "$buildDir/terrain-preview-pack/assets/giscraft/preview"
+    from("$buildDir/terrain-preview/doc/fasterminecarts/BetaTerrainSampler.class") {
+        rename { String name -> 'BetaTerrainSampler.bin' }
+    }
+    from("$buildDir/noise-stub/net/minecraft/world/gen/NoiseGenerator.class") {
+        rename { String name -> 'NoiseGenerator.bin' }
+    }
+}
+
+file("$buildDir/terrain-preview-pack").mkdirs()
+
 jar {
+    dependsOn packTerrainPreview
+    from("$buildDir/terrain-preview-pack")
     manifest {
         attributes(
             'FMLCorePlugin': 'doc.fasterminecarts.GiscraftCore',

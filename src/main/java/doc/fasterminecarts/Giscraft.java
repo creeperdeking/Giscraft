@@ -26,6 +26,7 @@ public final class Giscraft {
 
     @Mod.EventHandler
     public void preInitialize(FMLPreInitializationEvent event) {
+        OceanBoundaryConfig.load(event);
         ModItems.register();
     }
 
@@ -43,6 +44,7 @@ public final class Giscraft {
         MinecraftForge.EVENT_BUS.register(goldenTools);
         FMLCommonHandler.instance().bus().register(goldenTools);
         FMLCommonHandler.instance().bus().register(new SprintHandler());
+        MinecraftForge.EVENT_BUS.register(new OceanBoundaryHandler());
         proxy.registerClientHandlers();
     }
 
