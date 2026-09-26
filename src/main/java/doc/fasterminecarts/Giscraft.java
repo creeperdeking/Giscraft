@@ -3,6 +3,7 @@ package doc.fasterminecarts;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
+import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import net.minecraft.init.Blocks;
 import net.minecraftforge.common.MinecraftForge;
@@ -13,7 +14,7 @@ import net.minecraftforge.common.MinecraftForge;
         version = Giscraft.VERSION)
 public final class Giscraft {
     public static final String MOD_ID = "giscraft";
-    public static final String VERSION = "1.3.3";
+    public static final String VERSION = "1.3.5";
 
     @SidedProxy(
             clientSide = "doc.fasterminecarts.ClientProxy",
@@ -31,8 +32,15 @@ public final class Giscraft {
         ChestShape.setFullCubeBounds(Blocks.chest);
         ChestShape.setFullCubeBounds(Blocks.trapped_chest);
         MinecraftForge.EVENT_BUS.register(new ExperienceHandler());
+        MinecraftForge.EVENT_BUS.register(new FishingHandler());
         MinecraftForge.EVENT_BUS.register(new LeafDropHandler());
+        MinecraftForge.EVENT_BUS.register(new LogHarvestHandler());
         MinecraftForge.EVENT_BUS.register(new PigSpeedHandler());
         proxy.registerClientHandlers();
+    }
+
+    @Mod.EventHandler
+    public void postInitialize(FMLPostInitializationEvent event) {
+        LogHarvestHandler.applyAxeRequirement();
     }
 }
