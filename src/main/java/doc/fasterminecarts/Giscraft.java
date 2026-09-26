@@ -7,6 +7,8 @@ import cpw.mods.fml.common.event.FMLInitializationEvent;
 import cpw.mods.fml.common.event.FMLPostInitializationEvent;
 import cpw.mods.fml.common.event.FMLPreInitializationEvent;
 import net.minecraft.init.Blocks;
+import net.minecraft.init.Items;
+import net.minecraft.potion.PotionHelper;
 import net.minecraftforge.common.MinecraftForge;
 
 @Mod(
@@ -49,5 +51,6 @@ public final class Giscraft {
         LogHarvestHandler.applyAxeRequirement();
         ChestLootHandler.removeDungeonSeeds();
         GoldenToolHandler.applyGoldPickaxeHarvestLevel();
+        Items.golden_carrot.setPotionEffect(PotionHelper.speckledMelonEffect);
     }
 }
