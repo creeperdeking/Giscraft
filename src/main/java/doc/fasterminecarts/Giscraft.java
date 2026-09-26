@@ -1,5 +1,6 @@
 package doc.fasterminecarts;
 
+import cpw.mods.fml.common.FMLCommonHandler;
 import cpw.mods.fml.common.Mod;
 import cpw.mods.fml.common.SidedProxy;
 import cpw.mods.fml.common.event.FMLInitializationEvent;
@@ -14,7 +15,7 @@ import net.minecraftforge.common.MinecraftForge;
         version = Giscraft.VERSION)
 public final class Giscraft {
     public static final String MOD_ID = "giscraft";
-    public static final String VERSION = "1.3.8";
+    public static final String VERSION = "1.3.10";
 
     @SidedProxy(
             clientSide = "doc.fasterminecarts.ClientProxy",
@@ -36,6 +37,9 @@ public final class Giscraft {
         MinecraftForge.EVENT_BUS.register(new LeafDropHandler());
         MinecraftForge.EVENT_BUS.register(new LogHarvestHandler());
         MinecraftForge.EVENT_BUS.register(new PigSpeedHandler());
+        GoldenToolHandler goldenTools = new GoldenToolHandler();
+        MinecraftForge.EVENT_BUS.register(goldenTools);
+        FMLCommonHandler.instance().bus().register(goldenTools);
         proxy.registerClientHandlers();
     }
 

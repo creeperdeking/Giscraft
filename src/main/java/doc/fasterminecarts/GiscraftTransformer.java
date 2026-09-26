@@ -8,6 +8,7 @@ import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
+import org.objectweb.asm.tree.IntInsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -27,6 +28,7 @@ public final class GiscraftTransformer implements IClassTransformer {
             "net.minecraft.entity.passive.EntityPig";
     private static final String TARGET_OLD_LEAF_CLASS =
             "net.minecraft.block.BlockOldLeaf";
+    private static final String TARGET_IC2_CLASS = "ic2.core.IC2";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -61,6 +63,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_OLD_LEAF_CLASS.equals(transformedName)) {
             return transformLeafAppleDrop(basicClass);
+        }
+
+        if (TARGET_IC2_CLASS.equals(transformedName) || TARGET_IC2_CLASS.equals(name)) {
+            return transformRubberTreeRarity(basicClass);
         }
 
         return basicClass;
@@ -338,6 +344,51 @@ public final class GiscraftTransformer implements IClassTransformer {
         if (!patched) {
             throw new RuntimeException(
                     "Giscraft could not disable oak leaf apple drops.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformRubberTreeRarity(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (!"generate".equals(method.name) || method.desc == null
+                    || !method.desc.contains("Ljava/util/Random;")) {
+                continue;
+            }
+
+            AbstractInsnNode insn = method.instructions.getFirst();
+            while (insn != null) {
+                if (insn.getOpcode() == Opcodes.BIPUSH && insn instanceof IntInsnNode) {
+                    IntInsnNode intInsn = (IntInsnNode) insn;
+                    AbstractInsnNode next = insn.getNext();
+                    if (intInsn.operand == 100
+                            && next instanceof MethodInsnNode
+                            && "nextInt".equals(((MethodInsnNode) next).name)
+                            && "java/util/Random".equals(((MethodInsnNode) next).owner)) {
+                        intInsn.setOpcode(Opcodes.SIPUSH);
+                        intInsn.operand = 1000;
+                        patched = true;
+                        break;
+                    }
+                }
+                insn = insn.getNext();
+            }
+
+            if (patched) {
+                break;
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not reduce IC2 rubber tree rarity.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
