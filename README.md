@@ -52,3 +52,58 @@ require targeted bytecode changes in Minecraft 1.7.10.
 ```
 
 Press Ctrl+Shift+D, choose Attach to Minecraft (5005), then press F5.
+
+## Map preview
+
+`OceanBoundaryPreview` draws a top-down picture of a seed after the ocean boundary is applied. It samples Old World Gen's beta terrain, so the picture shows beta land and water plus the boundary. Run it with Java 8 against the built jar:
+
+```text
+java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --seed 8675309 --out terrain-preview.png
+```
+
+North is up. The red mark is the center, which is spawn when `centerX` and `centerZ` stay at 0. The bottom scale is X and the left scale is Z, with a tick every 1024 blocks from spawn. Higher land is lighter.
+
+Colors:
+
+- white: snow (tundra and taiga)
+- light green: open grassland (plains, savanna, shrubland)
+- dark green: forest (forest, seasonal forest, rainforest, swamp)
+- yellow: desert
+- blue: water, including beta oceans and the boundary ocean
+- dark blue: deep ocean, about 30 blocks of water, reached across a 20-block slope
+
+A default terrain map is 320 pixels on a side and takes about a minute. `--pixels 640` is sharper and takes a few minutes. `--zone` skips the terrain and draws only the ocean zones, which is immediate.
+
+The beta picture needs `NostalgiaGenerator` on the build machine and again when you run the tool. The build looks for `C:/Users/alexi/curseforge/minecraft/Instances/1.7.10/mods/NostalgiaGenerator-1.0.0-1.7.10.jar`, or the path you pass with `-PowgJar=...`. At runtime the tool looks in that same mods folder, or uses `--owg path\to\NostalgiaGenerator.jar`. The biome colors follow the original beta climate. Worlds that switch Old World Gen to a later biome set will not match the picture.
+
+`--config path\to\giscraft.cfg` reads the `ocean_boundary` category. Options after it replace those values. The same names exist in the config:
+
+```text
+--seed <long>              world seed
+--out <file.png>           output image (default: ocean-preview.png)
+--radius <blocks>          half-width around the center
+--pixels <n>               map width and height (default: 320, or 1000 with --zone)
+--owg <jar>                NostalgiaGenerator jar
+--threads <n>              sampling threads (default: all processors)
+--centerX <blocks>
+--centerZ <blocks>
+--transitionStart <blocks>
+--fullOceanRadius <blocks>
+--seaLevel <blocks>
+--oceanFloor <blocks>
+--oceanFloorVariation <blocks>
+--coastlineAmplitude <blocks>
+--coastlineScale <number>
+--deepOceanStart <blocks>
+--deepOceanFloor <blocks>
+--deepOceanTransition <blocks>
+--circular true|false
+--coastlineNoise true|false
+--useDeepOcean true|false
+```
+
+Example with a config file and a wider transition:
+
+```text
+java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --config config/giscraft.cfg --transitionStart 6000 --fullOceanRadius 8000 --out wide-preview.png
+```
