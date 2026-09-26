@@ -38,6 +38,16 @@ public final class GiscraftTransformer implements IClassTransformer {
             "net.minecraft.client.gui.GuiIngameMenu";
     private static final String TARGET_HILLS_BIOME =
             "net.minecraft.world.biome.BiomeGenHills";
+    private static final String TARGET_ANVIL_CONTAINER =
+            "net.minecraft.inventory.ContainerRepair";
+    private static final String TARGET_ANVIL_RESULT_SLOT =
+            "net.minecraft.inventory.ContainerRepair$2";
+    private static final String TARGET_SUGAR_CANE_GEN =
+            "net.minecraft.world.gen.feature.WorldGenReed";
+    private static final String TARGET_CACTUS_GEN =
+            "net.minecraft.world.gen.feature.WorldGenCactus";
+    private static final String TARGET_OLD_SUGAR_CANE_GEN = "owg.deco.OldGenReed";
+    private static final String TARGET_OLD_CACTUS_GEN = "owg.deco.OldGenCactus";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -88,6 +98,18 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_HILLS_BIOME.equals(transformedName)) {
             return transformEmeraldGeneration(basicClass);
+        }
+
+        if (TARGET_ANVIL_CONTAINER.equals(transformedName)) {
+            return transformAnvilContainer(basicClass);
+        }
+
+        if (TARGET_ANVIL_RESULT_SLOT.equals(transformedName)) {
+            return transformAnvilResultSlot(basicClass);
+        }
+
+        if (isFullGrownPlant(name) || isFullGrownPlant(transformedName)) {
+            return transformFullGrownPlant(basicClass, transformedName);
         }
 
         return basicClass;
@@ -417,6 +439,108 @@ public final class GiscraftTransformer implements IClassTransformer {
         return writer.toByteArray();
     }
 
+    private static boolean isFullGrownPlant(String className) {
+        return TARGET_SUGAR_CANE_GEN.equals(className)
+                || TARGET_CACTUS_GEN.equals(className)
+                || TARGET_OLD_SUGAR_CANE_GEN.equals(className)
+                || TARGET_OLD_CACTUS_GEN.equals(className);
+    }
+
+    private static byte[] transformFullGrownPlant(byte[] basicClass, String transformedName) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (replacePlantHeight(method)) {
+                patched = true;
+                break;
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not fully grow " + transformedName + ".");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static boolean replacePlantHeight(MethodNode method) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+
+            if (instruction.getOpcode() != Opcodes.ISTORE) {
+                continue;
+            }
+
+            AbstractInsnNode[] earlier = new AbstractInsnNode[9];
+            AbstractInsnNode cursor = instruction;
+            boolean complete = true;
+            for (int index = 0; index < earlier.length; index++) {
+                cursor = previousReal(cursor);
+                if (cursor == null) {
+                    complete = false;
+                    break;
+                }
+                earlier[index] = cursor;
+            }
+            if (!complete) {
+                continue;
+            }
+
+            AbstractInsnNode secondAdd = earlier[0];
+            AbstractInsnNode secondNextInt = earlier[1];
+            AbstractInsnNode firstAdd = earlier[2];
+            AbstractInsnNode plusOne = earlier[3];
+            AbstractInsnNode firstNextInt = earlier[4];
+            AbstractInsnNode bound = earlier[5];
+            AbstractInsnNode randomInner = earlier[6];
+            AbstractInsnNode randomOuter = earlier[7];
+            AbstractInsnNode base = earlier[8];
+
+            if (secondAdd == null || secondAdd.getOpcode() != Opcodes.IADD
+                    || firstAdd == null || firstAdd.getOpcode() != Opcodes.IADD
+                    || plusOne == null || plusOne.getOpcode() != Opcodes.ICONST_1
+                    || bound == null || bound.getOpcode() != Opcodes.ICONST_3
+                    || !isRandomNextInt(firstNextInt)
+                    || !isRandomNextInt(secondNextInt)
+                    || randomInner == null || randomInner.getOpcode() != Opcodes.ALOAD
+                    || randomOuter == null || randomOuter.getOpcode() != Opcodes.ALOAD
+                    || base == null
+                    || (base.getOpcode() != Opcodes.ICONST_1
+                            && base.getOpcode() != Opcodes.ICONST_2)) {
+                continue;
+            }
+
+            if (!(instruction instanceof VarInsnNode)) {
+                continue;
+            }
+
+            InsnList fullHeight = new InsnList();
+            fullHeight.add(new InsnNode(Opcodes.ICONST_3));
+            fullHeight.add(new VarInsnNode(
+                    Opcodes.ISTORE,
+                    ((VarInsnNode) instruction).var));
+            method.instructions.insert(instruction, fullHeight);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static boolean isRandomNextInt(AbstractInsnNode instruction) {
+        return instruction instanceof MethodInsnNode
+                && instruction.getOpcode() == Opcodes.INVOKEVIRTUAL
+                && "java/util/Random".equals(((MethodInsnNode) instruction).owner)
+                && "nextInt".equals(((MethodInsnNode) instruction).name)
+                && "(I)I".equals(((MethodInsnNode) instruction).desc);
+    }
+
     private static byte[] transformEmeraldGeneration(byte[] basicClass) {
         ClassNode classNode = new ClassNode();
         new ClassReader(basicClass).accept(classNode, 0);
@@ -490,11 +614,242 @@ public final class GiscraftTransformer implements IClassTransformer {
     }
 
     private static AbstractInsnNode nextReal(AbstractInsnNode instruction) {
+        if (instruction == null) {
+            return null;
+        }
         AbstractInsnNode next = instruction.getNext();
         while (next != null && next.getOpcode() < 0) {
             next = next.getNext();
         }
         return next;
+    }
+
+    private static byte[] transformAnvilContainer(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean removedLimit = false;
+        boolean removedCost = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (removeTooExpensiveLimit(method)) {
+                removedLimit = true;
+                removedCost = zeroAnvilLevelCost(method);
+                break;
+            }
+        }
+
+        if (!removedLimit || !removedCost) {
+            throw new RuntimeException(
+                    "Giscraft could not remove anvil level costs.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static boolean removeTooExpensiveLimit(MethodNode method) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+
+            if (instruction.getOpcode() != Opcodes.BIPUSH
+                    || !(instruction instanceof IntInsnNode)
+                    || ((IntInsnNode) instruction).operand != 40) {
+                continue;
+            }
+
+            AbstractInsnNode compare = nextReal(instruction);
+            if (compare == null
+                    || compare.getOpcode() != Opcodes.IF_ICMPLT
+                    || !(compare instanceof JumpInsnNode)) {
+                continue;
+            }
+
+            LabelNode skip = ((JumpInsnNode) compare).label;
+            AbstractInsnNode cursor = compare.getNext();
+            AbstractInsnNode clearResult = null;
+            AbstractInsnNode storeResult = null;
+            while (cursor != null && cursor != skip) {
+                if (cursor.getOpcode() == Opcodes.ACONST_NULL) {
+                    AbstractInsnNode store = nextReal(cursor);
+                    if (store != null && store.getOpcode() == Opcodes.ASTORE) {
+                        clearResult = cursor;
+                        storeResult = store;
+                        break;
+                    }
+                }
+                cursor = cursor.getNext();
+            }
+
+            if (clearResult == null) {
+                continue;
+            }
+
+            AbstractInsnNode costField = previousReal(instruction);
+            AbstractInsnNode loadContainer = previousReal(costField);
+            if (loadContainer == null || costField == null
+                    || costField.getOpcode() != Opcodes.GETFIELD) {
+                continue;
+            }
+
+            AbstractInsnNode current = loadContainer;
+            AbstractInsnNode end = storeResult.getNext();
+            while (current != null && current != end) {
+                AbstractInsnNode next = current.getNext();
+                if (current.getOpcode() >= 0) {
+                    method.instructions.remove(current);
+                }
+                current = next;
+            }
+            return true;
+        }
+
+        return false;
+    }
+
+    private static boolean zeroAnvilLevelCost(MethodNode method) {
+        FieldInsnNode costField = null;
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+
+            if (instruction.getOpcode() == Opcodes.GETFIELD
+                    && instruction instanceof FieldInsnNode
+                    && nextReal(instruction) instanceof IntInsnNode
+                    && nextReal(instruction).getOpcode() == Opcodes.BIPUSH
+                    && ((IntInsnNode) nextReal(instruction)).operand == 40) {
+                costField = (FieldInsnNode) instruction;
+                break;
+            }
+        }
+
+        if (costField == null) {
+            return false;
+        }
+
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+
+            if (!(instruction instanceof MethodInsnNode)
+                    || instruction.getOpcode() != Opcodes.INVOKEVIRTUAL
+                    || !"()V".equals(((MethodInsnNode) instruction).desc)) {
+                continue;
+            }
+
+            if (nextReal(instruction) == null
+                    || nextReal(instruction).getOpcode() != Opcodes.RETURN) {
+                continue;
+            }
+
+            InsnList clearCost = new InsnList();
+            clearCost.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            clearCost.add(new InsnNode(Opcodes.ICONST_0));
+            clearCost.add(new FieldInsnNode(
+                    Opcodes.PUTFIELD,
+                    costField.owner,
+                    costField.name,
+                    costField.desc));
+            method.instructions.insertBefore(instruction, clearCost);
+            return true;
+        }
+
+        return false;
+    }
+
+    private static byte[] transformAnvilResultSlot(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patchedTake = false;
+        boolean patchedPickup = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (patchedTake || !returnsBoolean(method) || !containsOpcode(method, Opcodes.IF_ICMPLT)) {
+                continue;
+            }
+
+            MethodInsnNode hasStack = findInvoke(method, Opcodes.INVOKEVIRTUAL, "()Z");
+            if (hasStack == null) {
+                continue;
+            }
+
+            String owner = hasStack.owner;
+            String name = hasStack.name;
+            String desc = hasStack.desc;
+            method.instructions.clear();
+            method.tryCatchBlocks.clear();
+            if (method.localVariables != null) {
+                method.localVariables.clear();
+            }
+            method.instructions.add(new VarInsnNode(Opcodes.ALOAD, 0));
+            method.instructions.add(new MethodInsnNode(
+                    Opcodes.INVOKEVIRTUAL,
+                    owner,
+                    name,
+                    desc,
+                    false));
+            method.instructions.add(new InsnNode(Opcodes.IRETURN));
+            patchedTake = true;
+        }
+
+        for (MethodNode method : classNode.methods) {
+            MethodInsnNode chargeLevels = findInvoke(method, Opcodes.INVOKEVIRTUAL, "(I)V");
+            if (chargeLevels == null) {
+                continue;
+            }
+
+            AbstractInsnNode current = method.instructions.getFirst();
+            AbstractInsnNode end = chargeLevels.getNext();
+            while (current != null && current != end) {
+                AbstractInsnNode next = current.getNext();
+                if (current.getOpcode() >= 0) {
+                    method.instructions.remove(current);
+                }
+                current = next;
+            }
+            patchedPickup = true;
+            break;
+        }
+
+        if (!patchedTake || !patchedPickup) {
+            throw new RuntimeException(
+                    "Giscraft could not remove anvil level costs.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static boolean returnsBoolean(MethodNode method) {
+        return method.desc != null && method.desc.endsWith(")Z");
+    }
+
+    private static boolean containsOpcode(MethodNode method, int opcode) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+            if (instruction.getOpcode() == opcode) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static MethodInsnNode findInvoke(MethodNode method, int opcode, String desc) {
+        for (AbstractInsnNode instruction = method.instructions.getFirst();
+             instruction != null;
+             instruction = instruction.getNext()) {
+            if (instruction.getOpcode() == opcode
+                    && instruction instanceof MethodInsnNode
+                    && desc.equals(((MethodInsnNode) instruction).desc)) {
+                return (MethodInsnNode) instruction;
+            }
+        }
+        return null;
     }
 
     private static byte[] transformPauseMenuTitle(byte[] basicClass) {
@@ -564,6 +919,9 @@ public final class GiscraftTransformer implements IClassTransformer {
     }
 
     private static AbstractInsnNode previousReal(AbstractInsnNode instruction) {
+        if (instruction == null) {
+            return null;
+        }
         AbstractInsnNode previous = instruction.getPrevious();
         while (previous != null && previous.getOpcode() < 0) {
             previous = previous.getPrevious();
