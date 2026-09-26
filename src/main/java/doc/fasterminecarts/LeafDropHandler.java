@@ -15,14 +15,20 @@ public final class LeafDropHandler {
 
     @SubscribeEvent
     public void onHarvestDrops(BlockEvent.HarvestDropsEvent event) {
-        if (!(event.block instanceof BlockLeavesBase)) {
-            return;
-        }
-
         Iterator<ItemStack> drops = event.drops.iterator();
         while (drops.hasNext()) {
             ItemStack stack = drops.next();
-            if (stack != null && stack.getItem() == Items.apple) {
+            if (stack == null) {
+                continue;
+            }
+
+            if (stack.getItem() == Items.poisonous_potato) {
+                drops.remove();
+                continue;
+            }
+
+            if (event.block instanceof BlockLeavesBase
+                    && stack.getItem() == Items.apple) {
                 drops.remove();
             }
         }

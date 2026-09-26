@@ -12,7 +12,7 @@ uses a golden recolor of the vanilla carrot-on-a-stick texture. While ridden, pi
 automatically step onto one-block-tall obstacles.
 
 The mod also removes experience-orb generation, stops oak leaves from dropping
-apples, makes logs require an axe (punching is slow and drops nothing, like
+apples, removes poisonous potatoes from potato harvests, makes logs require an axe (punching is slow and drops nothing, like
 stone without a pickaxe), makes fishing catch only the original vanilla fish,
 and changes chest collision and rendering to use a full-cube shape with a
 limited lid angle.
