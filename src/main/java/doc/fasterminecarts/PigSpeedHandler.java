@@ -1,13 +1,13 @@
 package doc.fasterminecarts;
 
 import cpw.mods.fml.common.eventhandler.SubscribeEvent;
-import cpw.mods.fml.common.gameevent.TickEvent;
 import net.minecraft.entity.EntityLiving;
 import net.minecraft.entity.passive.EntityPig;
 import net.minecraft.entity.player.EntityPlayer;
 import net.minecraft.init.Items;
 import net.minecraft.item.ItemStack;
 import net.minecraft.nbt.NBTTagCompound;
+import net.minecraftforge.event.entity.living.LivingEvent;
 
 /**
  * Gives ridden pigs predictable acceleration without replacing vanilla
@@ -22,49 +22,48 @@ public final class PigSpeedHandler {
     private static final float RIDING_STEP_HEIGHT = 1.0F;
 
     @SubscribeEvent
-    public void onWorldTick(TickEvent.WorldTickEvent event) {
-        if (event.phase != TickEvent.Phase.END) {
+    public void onLivingUpdate(LivingEvent.LivingUpdateEvent event) {
+        if (!(event.entityLiving instanceof EntityPig)) {
             return;
         }
 
-        for (Object entity : event.world.loadedEntityList) {
-            if (!(entity instanceof EntityPig)) {
-                continue;
+        EntityPig pig = (EntityPig) event.entityLiving;
+        NBTTagCompound data = pig.getEntityData();
+
+        if (!(pig.riddenByEntity instanceof EntityPlayer)) {
+            data.removeTag(SPEED_TAG);
+            if (data.hasKey(STEP_HEIGHT_TAG)) {
+                pig.stepHeight = data.getFloat(STEP_HEIGHT_TAG);
+                data.removeTag(STEP_HEIGHT_TAG);
             }
+            return;
+        }
 
-            EntityPig pig = (EntityPig) entity;
-            NBTTagCompound data = pig.getEntityData();
+        if (!data.hasKey(STEP_HEIGHT_TAG)) {
+            data.setFloat(STEP_HEIGHT_TAG, pig.stepHeight);
+        }
+        pig.stepHeight = RIDING_STEP_HEIGHT;
 
-            if (!(pig.riddenByEntity instanceof EntityPlayer)) {
-                data.removeTag(SPEED_TAG);
-                if (data.hasKey(STEP_HEIGHT_TAG)) {
-                    pig.stepHeight = data.getFloat(STEP_HEIGHT_TAG);
-                    data.removeTag(STEP_HEIGHT_TAG);
-                }
-                continue;
-            }
-
-            if (!data.hasKey(STEP_HEIGHT_TAG)) {
-                data.setFloat(STEP_HEIGHT_TAG, pig.stepHeight);
-            }
-            pig.stepHeight = RIDING_STEP_HEIGHT;
-
-            EntityPlayer rider = (EntityPlayer) pig.riddenByEntity;
-            ItemStack heldItem = rider.getHeldItem();
-            if (heldItem == null || heldItem.getItem() != Items.carrot_on_a_stick) {
-                data.removeTag(SPEED_TAG);
-                pig.motionX = 0.0D;
-                pig.motionZ = 0.0D;
-                pig.moveStrafing = 0.0F;
-                pig.moveForward = 0.0F;
+        EntityPlayer rider = (EntityPlayer) pig.riddenByEntity;
+        ItemStack heldItem = rider.getHeldItem();
+        if (heldItem == null || heldItem.getItem() != Items.carrot_on_a_stick) {
+            data.removeTag(SPEED_TAG);
+            boolean wasMoving = pig.motionX != 0.0D || pig.motionZ != 0.0D;
+            pig.motionX = 0.0D;
+            pig.motionZ = 0.0D;
+            pig.moveStrafing = 0.0F;
+            pig.moveForward = 0.0F;
+            if (wasMoving) {
                 pig.velocityChanged = true;
             }
+            return;
         }
     }
 
     /**
-     * Replaces the final movement call in EntityAIControlledByPlayer. Supplying
-     * zero movement input prevents vanilla from adding its own acceleration.
+     * Replaces EntityAIControlledByPlayer's extra movement call. The velocity
+     * prepared here is consumed by the entity's normal movement pass on the
+     * following tick and sent to clients for normal entity interpolation.
      */
     public static void moveControlledPig(
             EntityLiving entity,
@@ -87,7 +86,6 @@ public final class PigSpeedHandler {
             pig.motionZ = 0.0D;
             pig.moveStrafing = 0.0F;
             pig.moveForward = 0.0F;
-            pig.moveEntityWithHeading(0.0F, 0.0F);
             return;
         }
 
@@ -104,10 +102,6 @@ public final class PigSpeedHandler {
         double yawRadians = Math.toRadians(pig.rotationYaw);
         pig.motionX = -Math.sin(yawRadians) * speed;
         pig.motionZ = Math.cos(yawRadians) * speed;
-
-        pig.moveEntityWithHeading(0.0F, 0.0F);
-        pig.motionX = 0.0D;
-        pig.motionZ = 0.0D;
         pig.moveStrafing = 0.0F;
         pig.moveForward = 0.0F;
         pig.velocityChanged = true;
