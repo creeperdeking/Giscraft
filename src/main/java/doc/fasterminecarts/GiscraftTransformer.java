@@ -6,6 +6,7 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
+import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
@@ -33,6 +34,10 @@ public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_IC2_CLASS = "ic2.core.IC2";
     private static final String TARGET_PLAYER_CLASS =
             "net.minecraft.entity.player.EntityPlayer";
+    private static final String TARGET_PAUSE_MENU =
+            "net.minecraft.client.gui.GuiIngameMenu";
+    private static final String TARGET_HILLS_BIOME =
+            "net.minecraft.world.biome.BiomeGenHills";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -75,6 +80,14 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_PLAYER_CLASS.equals(transformedName)) {
             return transformSuitMovementHunger(basicClass);
+        }
+
+        if (TARGET_PAUSE_MENU.equals(transformedName)) {
+            return transformPauseMenuTitle(basicClass);
+        }
+
+        if (TARGET_HILLS_BIOME.equals(transformedName)) {
+            return transformEmeraldGeneration(basicClass);
         }
 
         return basicClass;
@@ -402,6 +415,160 @@ public final class GiscraftTransformer implements IClassTransformer {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private static byte[] transformEmeraldGeneration(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null;
+                 instruction = instruction.getNext()) {
+
+                if (instruction.getOpcode() != Opcodes.GETSTATIC
+                        || !(instruction instanceof FieldInsnNode)
+                        || !isEmeraldOreField((FieldInsnNode) instruction)) {
+                    continue;
+                }
+
+                AbstractInsnNode z = previousReal(instruction);
+                AbstractInsnNode y = previousReal(z);
+                AbstractInsnNode x = previousReal(y);
+                AbstractInsnNode world = previousReal(x);
+                AbstractInsnNode meta = nextReal(instruction);
+                AbstractInsnNode flags = nextReal(meta);
+                AbstractInsnNode setBlock = nextReal(flags);
+                AbstractInsnNode pop = nextReal(setBlock);
+
+                if (world == null || world.getOpcode() != Opcodes.ALOAD
+                        || x == null || x.getOpcode() != Opcodes.ILOAD
+                        || y == null || y.getOpcode() != Opcodes.ILOAD
+                        || z == null || z.getOpcode() != Opcodes.ILOAD
+                        || meta == null || meta.getOpcode() != Opcodes.ICONST_0
+                        || flags == null || flags.getOpcode() != Opcodes.ICONST_2
+                        || setBlock == null
+                        || setBlock.getOpcode() != Opcodes.INVOKEVIRTUAL
+                        || pop == null || pop.getOpcode() != Opcodes.POP) {
+                    continue;
+                }
+
+                method.instructions.remove(world);
+                method.instructions.remove(x);
+                method.instructions.remove(y);
+                method.instructions.remove(z);
+                method.instructions.remove(instruction);
+                method.instructions.remove(meta);
+                method.instructions.remove(flags);
+                method.instructions.remove(setBlock);
+                method.instructions.remove(pop);
+                patched = true;
+                break;
+            }
+
+            if (patched) {
+                break;
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not disable emerald world generation.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static boolean isEmeraldOreField(FieldInsnNode field) {
+        return "emerald_ore".equals(field.name)
+                || "field_150412_bA".equals(field.name)
+                || "bA".equals(field.name);
+    }
+
+    private static AbstractInsnNode nextReal(AbstractInsnNode instruction) {
+        AbstractInsnNode next = instruction.getNext();
+        while (next != null && next.getOpcode() < 0) {
+            next = next.getNext();
+        }
+        return next;
+    }
+
+    private static byte[] transformPauseMenuTitle(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (!"(IIF)V".equals(method.desc)) {
+                continue;
+            }
+
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null;
+                 instruction = instruction.getNext()) {
+
+                if (!(instruction instanceof MethodInsnNode)
+                        || instruction.getOpcode() != Opcodes.INVOKEVIRTUAL) {
+                    continue;
+                }
+
+                MethodInsnNode call = (MethodInsnNode) instruction;
+                if (call.desc == null
+                        || !call.desc.endsWith("Ljava/lang/String;III)V")) {
+                    continue;
+                }
+
+                AbstractInsnNode color = previousReal(call);
+                if (!(color instanceof LdcInsnNode)
+                        || !Integer.valueOf(16777215).equals(((LdcInsnNode) color).cst)) {
+                    continue;
+                }
+
+                AbstractInsnNode titleY = previousReal(color);
+                if (!(titleY instanceof IntInsnNode)
+                        || titleY.getOpcode() != Opcodes.BIPUSH
+                        || ((IntInsnNode) titleY).operand != 40) {
+                    continue;
+                }
+
+                method.instructions.set(
+                        titleY,
+                        new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                "doc/fasterminecarts/PauseMenuHandler",
+                                "titleY",
+                                "()I",
+                                false));
+                patched = true;
+                break;
+            }
+
+            if (patched) {
+                break;
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not center the pause menu title.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static AbstractInsnNode previousReal(AbstractInsnNode instruction) {
+        AbstractInsnNode previous = instruction.getPrevious();
+        while (previous != null && previous.getOpcode() < 0) {
+            previous = previous.getPrevious();
+        }
+        return previous;
     }
 
     private static byte[] transformSuitMovementHunger(byte[] basicClass) {
