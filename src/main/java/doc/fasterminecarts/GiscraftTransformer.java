@@ -9,6 +9,8 @@ import org.objectweb.asm.tree.ClassNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.IntInsnNode;
+import org.objectweb.asm.tree.JumpInsnNode;
+import org.objectweb.asm.tree.LabelNode;
 import org.objectweb.asm.tree.LdcInsnNode;
 import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
@@ -29,6 +31,8 @@ public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_OLD_LEAF_CLASS =
             "net.minecraft.block.BlockOldLeaf";
     private static final String TARGET_IC2_CLASS = "ic2.core.IC2";
+    private static final String TARGET_PLAYER_CLASS =
+            "net.minecraft.entity.player.EntityPlayer";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -67,6 +71,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_IC2_CLASS.equals(transformedName) || TARGET_IC2_CLASS.equals(name)) {
             return transformRubberTreeRarity(basicClass);
+        }
+
+        if (TARGET_PLAYER_CLASS.equals(transformedName)) {
+            return transformSuitMovementHunger(basicClass);
         }
 
         return basicClass;
@@ -373,7 +381,7 @@ public final class GiscraftTransformer implements IClassTransformer {
                             && "nextInt".equals(((MethodInsnNode) next).name)
                             && "java/util/Random".equals(((MethodInsnNode) next).owner)) {
                         intInsn.setOpcode(Opcodes.SIPUSH);
-                        intInsn.operand = 1000;
+                        intInsn.operand = 500;
                         patched = true;
                         break;
                     }
@@ -394,6 +402,64 @@ public final class GiscraftTransformer implements IClassTransformer {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private static byte[] transformSuitMovementHunger(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patchedMovement = false;
+        boolean patchedJump = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (("addMovementStat".equals(method.name) || "func_71000_j".equals(method.name))
+                    && "(DDD)V".equals(method.desc)) {
+                method.instructions.insert(newHungerSkip());
+                patchedMovement = true;
+            }
+
+            if (("jump".equals(method.name) || "func_70664_aZ".equals(method.name))
+                    && "()V".equals(method.desc)) {
+                AbstractInsnNode insn = method.instructions.getFirst();
+                while (insn != null) {
+                    if (insn.getOpcode() == Opcodes.INVOKESPECIAL
+                            && insn instanceof MethodInsnNode) {
+                        MethodInsnNode call = (MethodInsnNode) insn;
+                        if ("jump".equals(call.name) || "func_70664_aZ".equals(call.name)) {
+                            method.instructions.insert(insn, newHungerSkip());
+                            patchedJump = true;
+                            break;
+                        }
+                    }
+                    insn = insn.getNext();
+                }
+            }
+        }
+
+        if (!patchedMovement || !patchedJump) {
+            throw new RuntimeException(
+                    "Giscraft could not disable suit movement hunger.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static InsnList newHungerSkip() {
+        LabelNode continueLabel = new LabelNode();
+        InsnList inject = new InsnList();
+        inject.add(new VarInsnNode(Opcodes.ALOAD, 0));
+        inject.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                "doc/fasterminecarts/SprintHandler",
+                "wearingMovementSuit",
+                "(Lnet/minecraft/entity/player/EntityPlayer;)Z",
+                false));
+        inject.add(new JumpInsnNode(Opcodes.IFEQ, continueLabel));
+        inject.add(new InsnNode(Opcodes.RETURN));
+        inject.add(continueLabel);
+        return inject;
     }
 
 }

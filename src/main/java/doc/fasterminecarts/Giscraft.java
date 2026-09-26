@@ -15,7 +15,7 @@ import net.minecraftforge.common.MinecraftForge;
         version = Giscraft.VERSION)
 public final class Giscraft {
     public static final String MOD_ID = "giscraft";
-    public static final String VERSION = "1.3.11";
+    public static final String VERSION = "1.3.15";
 
     @SidedProxy(
             clientSide = "doc.fasterminecarts.ClientProxy",
@@ -48,5 +48,6 @@ public final class Giscraft {
     public void postInitialize(FMLPostInitializationEvent event) {
         LogHarvestHandler.applyAxeRequirement();
         ChestLootHandler.removeDungeonSeeds();
+        GoldenToolHandler.applyGoldPickaxeHarvestLevel();
     }
 }

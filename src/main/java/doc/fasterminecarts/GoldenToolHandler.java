@@ -6,18 +6,25 @@ import net.minecraft.enchantment.Enchantment;
 import net.minecraft.enchantment.EnchantmentHelper;
 import net.minecraft.entity.item.EntityItem;
 import net.minecraft.entity.player.EntityPlayer;
+import net.minecraft.init.Items;
 import net.minecraft.item.Item;
 import net.minecraft.item.ItemHoe;
 import net.minecraft.item.ItemStack;
 import net.minecraft.item.ItemTool;
 import net.minecraftforge.event.entity.EntityJoinWorldEvent;
 import net.minecraftforge.event.entity.living.LivingEvent.LivingUpdateEvent;
+import net.minecraftforge.event.entity.player.PlayerEvent;
 
 /**
- * Golden tools always have Silk Touch, including crafted, found, and existing
- * tools.
+ * Golden tools always have Silk Touch. Golden pickaxes also harvest the same
+ * blocks as iron pickaxes.
  */
 public final class GoldenToolHandler {
+    private static final int IRON_PICKAXE_HARVEST_LEVEL = 2;
+
+    public static void applyGoldPickaxeHarvestLevel() {
+        Items.golden_pickaxe.setHarvestLevel("pickaxe", IRON_PICKAXE_HARVEST_LEVEL);
+    }
 
     @SubscribeEvent
     public void onLivingUpdate(LivingUpdateEvent event) {
@@ -41,6 +48,16 @@ public final class GoldenToolHandler {
         if (event.entity instanceof EntityItem) {
             applySilkTouch(((EntityItem) event.entity).getEntityItem());
         }
+    }
+
+    @SubscribeEvent
+    public void onHarvestCheck(PlayerEvent.HarvestCheck event) {
+        ItemStack held = event.entityPlayer.getCurrentEquippedItem();
+        if (held == null || held.getItem() != Items.golden_pickaxe) {
+            return;
+        }
+
+        event.success = Items.iron_pickaxe.func_150897_b(event.block);
     }
 
     private static void applySilkTouch(ItemStack stack) {
