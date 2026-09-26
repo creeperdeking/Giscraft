@@ -8,7 +8,7 @@ Ridden pigs accelerate smoothly while controlled and stop when the rider is
 not holding a suitable carrot on a stick. A vanilla carrot on a stick reaches
 4 blocks per second. The mod's golden carrot on a stick reaches 8 blocks per
 second and is crafted shapelessly from a fishing rod and a golden carrot. It
-uses the vanilla carrot-on-a-stick texture. While ridden, pigs can
+uses a golden recolor of the vanilla carrot-on-a-stick texture. While ridden, pigs can
 automatically step onto one-block-tall obstacles.
 
 The mod also removes experience-orb generation and changes chest collision and
