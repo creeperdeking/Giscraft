@@ -11,8 +11,9 @@ second and is crafted shapelessly from a fishing rod and a golden carrot. It
 uses a golden recolor of the vanilla carrot-on-a-stick texture. While ridden, pigs can
 automatically step onto one-block-tall obstacles.
 
-The mod also removes experience-orb generation and changes chest collision and
-rendering to use a full-cube shape with a limited lid angle.
+The mod also removes experience-orb generation, stops oak leaves from dropping
+apples, and changes chest collision and rendering to use a full-cube shape with
+a limited lid angle.
 
 ## Build
 

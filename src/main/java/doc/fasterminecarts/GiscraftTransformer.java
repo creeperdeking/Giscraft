@@ -25,8 +25,12 @@ public final class GiscraftTransformer implements IClassTransformer {
             "net.minecraft.entity.ai.EntityAIControlledByPlayer";
     private static final String TARGET_PIG_CLASS =
             "net.minecraft.entity.passive.EntityPig";
+    private static final String TARGET_OLD_LEAF_CLASS =
+            "net.minecraft.block.BlockOldLeaf";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
+    private static final String LEAF_APPLE_DROP_DESC =
+            "(Lnet/minecraft/world/World;IIIII)V";
 
     @Override
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
@@ -53,6 +57,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_PIG_CLASS.equals(transformedName)) {
             return transformPigSteeringItem(basicClass);
+        }
+
+        if (TARGET_OLD_LEAF_CLASS.equals(transformedName)) {
+            return transformLeafAppleDrop(basicClass);
         }
 
         return basicClass;
@@ -294,6 +302,42 @@ public final class GiscraftTransformer implements IClassTransformer {
         if (!patched) {
             throw new RuntimeException(
                     "Giscraft could not patch pig steering items.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformLeafAppleDrop(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            boolean expectedName = "func_150124_c".equals(method.name)
+                    || "dropApple".equals(method.name);
+
+            if (!expectedName || !LEAF_APPLE_DROP_DESC.equals(method.desc)) {
+                continue;
+            }
+
+            method.instructions.clear();
+            method.tryCatchBlocks.clear();
+
+            if (method.localVariables != null) {
+                method.localVariables.clear();
+            }
+
+            method.instructions.add(new InsnNode(Opcodes.RETURN));
+            patched = true;
+            break;
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not disable oak leaf apple drops.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);

@@ -13,7 +13,7 @@ import net.minecraftforge.common.MinecraftForge;
         version = Giscraft.VERSION)
 public final class Giscraft {
     public static final String MOD_ID = "giscraft";
-    public static final String VERSION = "1.3.2";
+    public static final String VERSION = "1.3.3";
 
     @SidedProxy(
             clientSide = "doc.fasterminecarts.ClientProxy",
@@ -31,6 +31,7 @@ public final class Giscraft {
         ChestShape.setFullCubeBounds(Blocks.chest);
         ChestShape.setFullCubeBounds(Blocks.trapped_chest);
         MinecraftForge.EVENT_BUS.register(new ExperienceHandler());
+        MinecraftForge.EVENT_BUS.register(new LeafDropHandler());
         MinecraftForge.EVENT_BUS.register(new PigSpeedHandler());
         proxy.registerClientHandlers();
     }
