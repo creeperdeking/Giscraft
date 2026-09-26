@@ -2,18 +2,17 @@ package doc.fasterminecarts;
 
 import cpw.mods.fml.relauncher.IFMLLoadingPlugin;
 
-import java.io.File;
 import java.util.Map;
 
-@IFMLLoadingPlugin.Name("FasterVanillaMinecarts")
+@IFMLLoadingPlugin.Name("Giscraft")
 @IFMLLoadingPlugin.MCVersion("1.7.10")
 @IFMLLoadingPlugin.SortingIndex(1001)
 @IFMLLoadingPlugin.TransformerExclusions({"doc.fasterminecarts."})
-public final class FasterVanillaMinecartsCore implements IFMLLoadingPlugin {
+public final class GiscraftCore implements IFMLLoadingPlugin {
 
     @Override
     public String[] getASMTransformerClass() {
-        return new String[]{"doc.fasterminecarts.RailSpeedTransformer"};
+        return new String[]{"doc.fasterminecarts.GiscraftTransformer"};
     }
 
     @Override
@@ -28,10 +27,7 @@ public final class FasterVanillaMinecartsCore implements IFMLLoadingPlugin {
 
     @Override
     public void injectData(Map<String, Object> data) {
-        Object mcLocation = data.get("mcLocation");
-        if (mcLocation instanceof File) {
-            RailSpeedConfig.load((File) mcLocation);
-        }
+        // No launch data is required.
     }
 
     @Override

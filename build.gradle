@@ -13,9 +13,9 @@ buildscript {
 
 apply plugin: 'forge'
 
-version = '1.2.13'
+version = '1.3.1'
 group = 'doc.fasterminecarts'
-archivesBaseName = 'FasterVanillaMinecarts'
+archivesBaseName = 'Giscraft'
 
 sourceCompatibility = targetCompatibility = JavaVersion.VERSION_1_8
 
@@ -27,7 +27,7 @@ minecraft {
 jar {
     manifest {
         attributes(
-            'FMLCorePlugin': 'doc.fasterminecarts.FasterVanillaMinecartsCore',
+            'FMLCorePlugin': 'doc.fasterminecarts.GiscraftCore',
             'FMLCorePluginContainsFMLMod': 'true'
         )
     }

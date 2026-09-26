@@ -1,4 +1,4 @@
 Manifest-Version: 1.0
 FMLCorePluginContainsFMLMod: true
-FMLCorePlugin: doc.fasterminecarts.FasterVanillaMinecartsCore
+FMLCorePlugin: doc.fasterminecarts.GiscraftCore
 

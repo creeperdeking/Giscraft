@@ -6,7 +6,6 @@ import org.objectweb.asm.ClassWriter;
 import org.objectweb.asm.Opcodes;
 import org.objectweb.asm.tree.AbstractInsnNode;
 import org.objectweb.asm.tree.ClassNode;
-import org.objectweb.asm.tree.FieldInsnNode;
 import org.objectweb.asm.tree.InsnList;
 import org.objectweb.asm.tree.InsnNode;
 import org.objectweb.asm.tree.LdcInsnNode;
@@ -14,8 +13,7 @@ import org.objectweb.asm.tree.MethodInsnNode;
 import org.objectweb.asm.tree.MethodNode;
 import org.objectweb.asm.tree.VarInsnNode;
 
-public final class RailSpeedTransformer implements IClassTransformer {
-    private static final String TARGET_RAIL_CLASS = "net.minecraft.block.BlockRailBase";
+public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_CHEST_CLASS = "net.minecraft.block.BlockChest";
     private static final String TARGET_CHEST_MODEL =
             "net.minecraft.client.model.ModelChest";
@@ -25,10 +23,8 @@ public final class RailSpeedTransformer implements IClassTransformer {
             "net.minecraft.client.renderer.tileentity.TileEntityChestRenderer";
     private static final String TARGET_PIG_CONTROLLER =
             "net.minecraft.entity.ai.EntityAIControlledByPlayer";
-    private static final String TARGET_METHOD = "getRailMaxSpeed";
-    private static final String TARGET_DESC =
-            "(Lnet/minecraft/world/World;Lnet/minecraft/entity/item/EntityMinecart;III)F";
-    private static final String CONFIG_OWNER = "doc/fasterminecarts/RailSpeedConfig";
+    private static final String TARGET_PIG_CLASS =
+            "net.minecraft.entity.passive.EntityPig";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
 
@@ -36,10 +32,6 @@ public final class RailSpeedTransformer implements IClassTransformer {
     public byte[] transform(String name, String transformedName, byte[] basicClass) {
         if (basicClass == null) {
             return basicClass;
-        }
-
-        if (TARGET_RAIL_CLASS.equals(transformedName)) {
-            return transformRailSpeed(basicClass);
         }
 
         if (TARGET_CHEST_CLASS.equals(transformedName)) {
@@ -59,52 +51,11 @@ public final class RailSpeedTransformer implements IClassTransformer {
             return transformPigMovement(basicClass);
         }
 
+        if (TARGET_PIG_CLASS.equals(transformedName)) {
+            return transformPigSteeringItem(basicClass);
+        }
+
         return basicClass;
-    }
-
-    private static byte[] transformRailSpeed(byte[] basicClass) {
-        ClassNode classNode = new ClassNode();
-        new ClassReader(basicClass).accept(classNode, 0);
-
-        boolean patched = false;
-
-        for (MethodNode method : classNode.methods) {
-            if (!TARGET_METHOD.equals(method.name) || !TARGET_DESC.equals(method.desc)) {
-                continue;
-            }
-
-            for (AbstractInsnNode insn = method.instructions.getFirst();
-                 insn != null;
-                 insn = insn.getNext()) {
-
-                if (insn instanceof LdcInsnNode) {
-                    Object constant = ((LdcInsnNode) insn).cst;
-                    if (constant instanceof Float
-                            && Float.compare((Float) constant, 0.4F) == 0) {
-                        method.instructions.set(insn,
-                                new FieldInsnNode(
-                                        Opcodes.GETSTATIC,
-                                        CONFIG_OWNER,
-                                        "speedBlocksPerTick",
-                                        "F"));
-                        patched = true;
-                        break;
-                    }
-                }
-            }
-
-            break;
-        }
-
-        if (!patched) {
-            throw new RuntimeException(
-                    "FasterVanillaMinecarts could not patch BlockRailBase#getRailMaxSpeed. "
-                            + "Another coremod may have changed the method.");
-        }
-
-        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
-        classNode.accept(writer);
-        return writer.toByteArray();
     }
 
     private static byte[] transformChestBounds(byte[] basicClass) {
@@ -142,7 +93,7 @@ public final class RailSpeedTransformer implements IClassTransformer {
 
         if (!patched) {
             throw new RuntimeException(
-                    "FasterVanillaMinecarts could not patch BlockChest bounds.");
+                    "Giscraft could not patch BlockChest bounds.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
@@ -187,7 +138,7 @@ public final class RailSpeedTransformer implements IClassTransformer {
 
         if (!patched) {
             throw new RuntimeException(
-                    "FasterVanillaMinecarts could not expand "
+                    "Giscraft could not expand "
                             + transformedName + ".");
         }
 
@@ -239,7 +190,7 @@ public final class RailSpeedTransformer implements IClassTransformer {
 
         if (!patched) {
             throw new RuntimeException(
-                    "FasterVanillaMinecarts could not limit the chest lid angle.");
+                    "Giscraft could not limit the chest lid angle.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
@@ -294,7 +245,55 @@ public final class RailSpeedTransformer implements IClassTransformer {
 
         if (!patched) {
             throw new RuntimeException(
-                    "FasterVanillaMinecarts could not patch controlled pig movement.");
+                    "Giscraft could not patch controlled pig movement.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformPigSteeringItem(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            boolean expectedName = "canBeSteered".equals(method.name)
+                    || "func_82171_bF".equals(method.name);
+
+            if (!expectedName || !"()Z".equals(method.desc)) {
+                continue;
+            }
+
+            for (AbstractInsnNode instruction = method.instructions.getFirst();
+                 instruction != null;
+                 instruction = instruction.getNext()) {
+
+                if (instruction.getOpcode() != Opcodes.IRETURN) {
+                    continue;
+                }
+
+                InsnList goldenItemCheck = new InsnList();
+                goldenItemCheck.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                goldenItemCheck.add(new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        "doc/fasterminecarts/PigSpeedHandler",
+                        "isHoldingGoldenControlItem",
+                        "(Lnet/minecraft/entity/passive/EntityPig;)Z",
+                        false));
+                goldenItemCheck.add(new InsnNode(Opcodes.IOR));
+                method.instructions.insertBefore(instruction, goldenItemCheck);
+                patched = true;
+            }
+
+            break;
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not patch pig steering items.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);

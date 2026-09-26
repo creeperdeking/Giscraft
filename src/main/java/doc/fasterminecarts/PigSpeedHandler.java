@@ -14,11 +14,12 @@ import net.minecraftforge.event.entity.living.LivingEvent;
  * steering or vertical movement.
  */
 public final class PigSpeedHandler {
-    private static final double MAX_SPEED_BLOCKS_PER_TICK = 8.0D / 20.0D;
+    private static final double NORMAL_MAX_SPEED_BLOCKS_PER_TICK = 4.0D / 20.0D;
+    private static final double GOLDEN_MAX_SPEED_BLOCKS_PER_TICK = 8.0D / 20.0D;
     private static final double ACCELERATION_BLOCKS_PER_TICK_SQUARED = 0.02D;
-    private static final String SPEED_TAG = "FasterVanillaMinecartsPigSpeed";
+    private static final String SPEED_TAG = "GiscraftPigSpeed";
     private static final String STEP_HEIGHT_TAG =
-            "FasterVanillaMinecartsPigOriginalStepHeight";
+            "GiscraftPigOriginalStepHeight";
     private static final float RIDING_STEP_HEIGHT = 1.0F;
 
     @SubscribeEvent
@@ -46,7 +47,7 @@ public final class PigSpeedHandler {
 
         EntityPlayer rider = (EntityPlayer) pig.riddenByEntity;
         ItemStack heldItem = rider.getHeldItem();
-        if (heldItem == null || heldItem.getItem() != Items.carrot_on_a_stick) {
+        if (getMaximumSpeed(heldItem) == 0.0D) {
             data.removeTag(SPEED_TAG);
             boolean wasMoving = pig.motionX != 0.0D || pig.motionZ != 0.0D;
             pig.motionX = 0.0D;
@@ -79,8 +80,9 @@ public final class PigSpeedHandler {
         EntityPig pig = (EntityPig) entity;
         EntityPlayer rider = (EntityPlayer) pig.riddenByEntity;
         ItemStack heldItem = rider.getHeldItem();
+        double maximumSpeed = getMaximumSpeed(heldItem);
 
-        if (heldItem == null || heldItem.getItem() != Items.carrot_on_a_stick) {
+        if (maximumSpeed == 0.0D) {
             pig.getEntityData().removeTag(SPEED_TAG);
             pig.motionX = 0.0D;
             pig.motionZ = 0.0D;
@@ -95,7 +97,7 @@ public final class PigSpeedHandler {
                 ? data.getDouble(SPEED_TAG)
                 : Math.sqrt(pig.motionX * pig.motionX + pig.motionZ * pig.motionZ);
         speed = Math.min(
-                MAX_SPEED_BLOCKS_PER_TICK,
+                maximumSpeed,
                 speed + ACCELERATION_BLOCKS_PER_TICK_SQUARED);
         data.setDouble(SPEED_TAG, speed);
 
@@ -105,5 +107,31 @@ public final class PigSpeedHandler {
         pig.moveStrafing = 0.0F;
         pig.moveForward = 0.0F;
         pig.velocityChanged = true;
+    }
+
+    public static boolean isHoldingGoldenControlItem(EntityPig pig) {
+        if (!(pig.riddenByEntity instanceof EntityPlayer)) {
+            return false;
+        }
+
+        ItemStack heldItem = ((EntityPlayer) pig.riddenByEntity).getHeldItem();
+        return heldItem != null
+                && heldItem.getItem() == ModItems.GOLDEN_CARROT_ON_A_STICK;
+    }
+
+    private static double getMaximumSpeed(ItemStack heldItem) {
+        if (heldItem == null) {
+            return 0.0D;
+        }
+
+        if (heldItem.getItem() == ModItems.GOLDEN_CARROT_ON_A_STICK) {
+            return GOLDEN_MAX_SPEED_BLOCKS_PER_TICK;
+        }
+
+        if (heldItem.getItem() == Items.carrot_on_a_stick) {
+            return NORMAL_MAX_SPEED_BLOCKS_PER_TICK;
+        }
+
+        return 0.0D;
     }
 }

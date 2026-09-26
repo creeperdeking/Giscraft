@@ -1,39 +1,18 @@
-# Faster Vanilla Minecarts — Forge 1.7.10
+# Giscraft — Forge 1.7.10
 
-A Forge 1.7.10 coremod that improves vanilla minecart and ridden-pig movement.
+A Forge 1.7.10 coremod with ridden-pig movement and small gameplay changes.
 
 ## What it changes
 
-Forge 1.7.10's `BlockRailBase#getRailMaxSpeed` returns `0.4` blocks/tick by default (8 m/s). This coremod replaces that one constant with a configurable value.
+Ridden pigs accelerate smoothly while controlled and stop when the rider is
+not holding a suitable carrot on a stick. A vanilla carrot on a stick reaches
+4 blocks per second. The mod's golden carrot on a stick reaches 8 blocks per
+second and is crafted shapelessly from a fishing rod and a golden carrot. It
+uses the vanilla carrot-on-a-stick texture. While ridden, pigs can
+automatically step onto one-block-tall obstacles.
 
-It does **not** replace minecarts, add rails, change powered-rail acceleration, or change recipes.
-
-Custom rail blocks that override `getRailMaxSpeed` keep their own speed. Custom rails that simply inherit Forge's default rail speed will inherit this configured value too.
-
-Ridden pigs accelerate smoothly for one second until they reach a consistent
-speed of 8 blocks per second, but only while the rider holds a carrot on a
-stick; otherwise they stop. Vanilla pig steering and vertical movement are
-left intact. While ridden, pigs can automatically step onto one-block-tall
-obstacles. Their normal step height and acceleration state are restored
-whenever the rider dismounts.
-
-## Config
-
-After first launch:
-
-`config/FasterVanillaMinecarts.cfg`
-
-The only setting is:
-
-```properties
-maxSpeedMetersPerSecond=16.0
-```
-
-- Vanilla: `8.0`
-- Suggested: `12.0` to `16.0`
-- Hard maximum in this mod: `24.0` m/s, matching Forge 1.7.10's built-in minecart-on-rail cap of `1.2` blocks/tick.
-
-At higher speeds, Minecraft 1.7.10 minecarts can behave badly on corners/slopes and may outrun chunk loading. Straight track is safest.
+The mod also removes experience-orb generation and changes chest collision and
+rendering to use a full-cube shape with a limited lid angle.
 
 ## Build
 
@@ -54,11 +33,8 @@ Put the jar in the normal `mods` folder on both client and server.
 
 ## Implementation note
 
-This is a coremod because normal Forge configuration/events can raise the
-minecart's own speed cap, but vanilla rail blocks still impose their separate
-0.4 blocks/tick limit. The ASM transformer also routes vanilla's controlled-pig
-movement call through the mod so vanilla acceleration cannot exceed the pig's
-fixed limit.
+This is a coremod because chest geometry and vanilla controlled-pig movement
+require targeted bytecode changes in Minecraft 1.7.10.
 
 ## How to build
 
