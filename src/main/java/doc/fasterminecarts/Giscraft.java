@@ -15,7 +15,7 @@ import net.minecraftforge.common.MinecraftForge;
         version = Giscraft.VERSION)
 public final class Giscraft {
     public static final String MOD_ID = "giscraft";
-    public static final String VERSION = "1.3.10";
+    public static final String VERSION = "1.3.11";
 
     @SidedProxy(
             clientSide = "doc.fasterminecarts.ClientProxy",
@@ -40,6 +40,7 @@ public final class Giscraft {
         GoldenToolHandler goldenTools = new GoldenToolHandler();
         MinecraftForge.EVENT_BUS.register(goldenTools);
         FMLCommonHandler.instance().bus().register(goldenTools);
+        FMLCommonHandler.instance().bus().register(new SprintHandler());
         proxy.registerClientHandlers();
     }
 
