@@ -1,5 +1,6 @@
 package doc.fasterminecarts;
 
+import cpw.mods.fml.client.registry.RenderingRegistry;
 import net.minecraftforge.common.MinecraftForge;
 
 public final class ClientProxy extends CommonProxy {
@@ -9,5 +10,8 @@ public final class ClientProxy extends CommonProxy {
         MinecraftForge.EVENT_BUS.register(new ExperienceHudHandler());
         MinecraftForge.EVENT_BUS.register(new PauseMenuHandler());
         MinecraftForge.EVENT_BUS.register(new OptionsMenuHandler());
+        RenderingRegistry.registerEntityRenderingHandler(EntityFlowerGolem.class, new RenderFlowerGolem());
+        RenderingRegistry.registerEntityRenderingHandler(EntityGiantSquid.class, new RenderGiantSquid());
+        RenderingRegistry.registerEntityRenderingHandler(EntityBareSnowman.class, new RenderBareSnowman());
     }
 }

@@ -71,12 +71,18 @@ Colors:
 - yellow: desert
 - blue: water, including beta oceans and the boundary ocean
 - dark blue: deep ocean, about 30 blocks of water, reached across a 20-block slope
+- pale blue: frozen ocean, the 200 blocks of snow before the ice wall
+- white: the ice wall, about 30 blocks above the sea, with an angular jagged border and an eroded lip
+- gray: bare bedrock for 256 blocks after the ice
+- black: the void past the bedrock
+
+After 1536 blocks of deep ocean the ice wall rises from the sea floor. Bedrock climbs under the ice for 256 blocks, overtakes it, then runs flat for another 256 blocks and stops. Beyond that the world is empty and players fall. There is no wrap.
 
 A default terrain map is 320 pixels on a side and takes about a minute. `--pixels 640` is sharper and takes a few minutes. `--zone` skips the terrain and draws only the ocean zones, which is immediate.
 
 The beta picture needs `NostalgiaGenerator` on the build machine and again when you run the tool. The build looks for `C:/Users/alexi/curseforge/minecraft/Instances/1.7.10/mods/NostalgiaGenerator-1.0.0-1.7.10.jar`, or the path you pass with `-PowgJar=...`. At runtime the tool looks in that same mods folder, or uses `--owg path\to\NostalgiaGenerator.jar`. The biome colors follow the original beta climate. Worlds that switch Old World Gen to a later biome set will not match the picture.
 
-`--config path\to\giscraft.cfg` reads the `ocean_boundary` category. Options after it replace those values. The same names exist in the config:
+With no `--config`, the tool reads `Instances/1.7.10/config/giscraft.cfg` when that file exists, including `circular`. `--config path\to\giscraft.cfg` selects another file. Options after it replace those values. The same names exist in the config:
 
 ```text
 --seed <long>              world seed
@@ -97,6 +103,14 @@ The beta picture needs `NostalgiaGenerator` on the build machine and again when 
 --deepOceanStart <blocks>
 --deepOceanFloor <blocks>
 --deepOceanTransition <blocks>
+--iceWallGap <blocks>
+--iceSnowLead <blocks>
+--iceShelfLength <blocks>
+--bedrockRun <blocks>
+--iceWallHeight <blocks>
+--bedrockExtra <blocks>
+--iceWaveAmplitude <blocks>
+--iceHeightJitter <blocks>
 --circular true|false
 --coastlineNoise true|false
 --useDeepOcean true|false
