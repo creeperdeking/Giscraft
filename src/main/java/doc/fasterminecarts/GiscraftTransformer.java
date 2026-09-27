@@ -449,18 +449,20 @@ public final class GiscraftTransformer implements IClassTransformer {
             for (AbstractInsnNode insn = method.instructions.getFirst();
                  insn != null;
                  insn = insn.getNext()) {
-                if (!isIc2VeinBase(insn)) {
+                int kind = ic2VeinKind(insn);
+                if (kind == 0) {
                     continue;
                 }
                 InsnList scale = new InsnList();
                 scale.add(new VarInsnNode(Opcodes.ALOAD, 4));
                 scale.add(new VarInsnNode(Opcodes.ILOAD, 2));
                 scale.add(new VarInsnNode(Opcodes.ILOAD, 3));
+                scale.add(new IntInsnNode(Opcodes.BIPUSH, kind));
                 scale.add(new MethodInsnNode(
                         Opcodes.INVOKESTATIC,
                         "doc/fasterminecarts/OreRates",
                         "scaleIc2Base",
-                        "(ILnet/minecraft/world/World;II)I",
+                        "(ILnet/minecraft/world/World;III)I",
                         false));
                 method.instructions.insertBefore(insn, scale);
                 patched++;
@@ -469,32 +471,36 @@ public final class GiscraftTransformer implements IClassTransformer {
         return patched;
     }
 
-    private static boolean isIc2VeinBase(AbstractInsnNode istore) {
+    private static int ic2VeinKind(AbstractInsnNode istore) {
         if (!(istore instanceof VarInsnNode)
                 || istore.getOpcode() != Opcodes.ISTORE
                 || ((VarInsnNode) istore).var != 8) {
-            return false;
+            return 0;
         }
         AbstractInsnNode idiv = previousReal(istore);
         AbstractInsnNode sixtyFour = previousReal(idiv);
         AbstractInsnNode multiply = previousReal(sixtyFour);
         AbstractInsnNode sea = previousReal(multiply);
         AbstractInsnNode veins = previousReal(sea);
-        return idiv != null
-                && idiv.getOpcode() == Opcodes.IDIV
-                && sixtyFour instanceof IntInsnNode
-                && sixtyFour.getOpcode() == Opcodes.BIPUSH
-                && ((IntInsnNode) sixtyFour).operand == 64
-                && multiply != null
-                && multiply.getOpcode() == Opcodes.IMUL
-                && sea instanceof VarInsnNode
-                && sea.getOpcode() == Opcodes.ILOAD
-                && ((VarInsnNode) sea).var == 7
-                && veins instanceof IntInsnNode
-                && veins.getOpcode() == Opcodes.BIPUSH
-                && (((IntInsnNode) veins).operand == 15
-                        || ((IntInsnNode) veins).operand == 20
-                        || ((IntInsnNode) veins).operand == 25);
+        if (idiv == null
+                || idiv.getOpcode() != Opcodes.IDIV
+                || !(sixtyFour instanceof IntInsnNode)
+                || sixtyFour.getOpcode() != Opcodes.BIPUSH
+                || ((IntInsnNode) sixtyFour).operand != 64
+                || multiply == null
+                || multiply.getOpcode() != Opcodes.IMUL
+                || !(sea instanceof VarInsnNode)
+                || sea.getOpcode() != Opcodes.ILOAD
+                || ((VarInsnNode) sea).var != 7
+                || !(veins instanceof IntInsnNode)
+                || veins.getOpcode() != Opcodes.BIPUSH) {
+            return 0;
+        }
+        int kind = ((IntInsnNode) veins).operand;
+        if (kind == 15 || kind == 20 || kind == 25) {
+            return kind;
+        }
+        return 0;
     }
 
     private static byte[] transformBetaOres(byte[] basicClass) {
