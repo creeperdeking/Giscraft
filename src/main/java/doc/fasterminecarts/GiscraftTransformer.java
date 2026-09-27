@@ -48,6 +48,7 @@ public final class GiscraftTransformer implements IClassTransformer {
             "net.minecraft.world.gen.feature.WorldGenCactus";
     private static final String TARGET_OLD_SUGAR_CANE_GEN = "owg.deco.OldGenReed";
     private static final String TARGET_OLD_CACTUS_GEN = "owg.deco.OldGenCactus";
+    private static final String TARGET_BETA_GENERATOR = "owg.generator.ChunkGeneratorBeta";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -85,7 +86,11 @@ public final class GiscraftTransformer implements IClassTransformer {
         }
 
         if (TARGET_IC2_CLASS.equals(transformedName) || TARGET_IC2_CLASS.equals(name)) {
-            return transformRubberTreeRarity(basicClass);
+            return transformIc2(basicClass);
+        }
+
+        if (TARGET_BETA_GENERATOR.equals(transformedName) || TARGET_BETA_GENERATOR.equals(name)) {
+            return transformBetaOres(basicClass);
         }
 
         if (TARGET_PLAYER_CLASS.equals(transformedName)) {
@@ -394,12 +399,21 @@ public final class GiscraftTransformer implements IClassTransformer {
         return writer.toByteArray();
     }
 
-    private static byte[] transformRubberTreeRarity(byte[] basicClass) {
+    private static byte[] transformIc2(byte[] basicClass) {
         ClassNode classNode = new ClassNode();
         new ClassReader(basicClass).accept(classNode, 0);
+        if (!patchRubberTreeRarity(classNode)) {
+            throw new RuntimeException("Giscraft could not reduce IC2 rubber tree rarity.");
+        }
+        if (patchIc2OreRates(classNode) != 3) {
+            throw new RuntimeException("Giscraft could not scale IC2 copper, tin, and uranium.");
+        }
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
 
-        boolean patched = false;
-
+    private static boolean patchRubberTreeRarity(ClassNode classNode) {
         for (MethodNode method : classNode.methods) {
             if (!"generate".equals(method.name) || method.desc == null
                     || !method.desc.contains("Ljava/util/Random;")) {
@@ -417,26 +431,157 @@ public final class GiscraftTransformer implements IClassTransformer {
                             && "java/util/Random".equals(((MethodInsnNode) next).owner)) {
                         intInsn.setOpcode(Opcodes.SIPUSH);
                         intInsn.operand = 500;
-                        patched = true;
-                        break;
+                        return true;
                     }
                 }
                 insn = insn.getNext();
             }
+        }
+        return false;
+    }
 
-            if (patched) {
-                break;
+    private static int patchIc2OreRates(ClassNode classNode) {
+        int patched = 0;
+        for (MethodNode method : classNode.methods) {
+            if (!"generate".equals(method.name)) {
+                continue;
+            }
+            for (AbstractInsnNode insn = method.instructions.getFirst();
+                 insn != null;
+                 insn = insn.getNext()) {
+                if (!isIc2VeinBase(insn)) {
+                    continue;
+                }
+                InsnList scale = new InsnList();
+                scale.add(new VarInsnNode(Opcodes.ALOAD, 4));
+                scale.add(new VarInsnNode(Opcodes.ILOAD, 2));
+                scale.add(new VarInsnNode(Opcodes.ILOAD, 3));
+                scale.add(new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        "doc/fasterminecarts/OreRates",
+                        "scaleIc2Base",
+                        "(ILnet/minecraft/world/World;II)I",
+                        false));
+                method.instructions.insertBefore(insn, scale);
+                patched++;
             }
         }
+        return patched;
+    }
 
-        if (!patched) {
-            throw new RuntimeException(
-                    "Giscraft could not reduce IC2 rubber tree rarity.");
+    private static boolean isIc2VeinBase(AbstractInsnNode istore) {
+        if (!(istore instanceof VarInsnNode)
+                || istore.getOpcode() != Opcodes.ISTORE
+                || ((VarInsnNode) istore).var != 8) {
+            return false;
         }
+        AbstractInsnNode idiv = previousReal(istore);
+        AbstractInsnNode sixtyFour = previousReal(idiv);
+        AbstractInsnNode multiply = previousReal(sixtyFour);
+        AbstractInsnNode sea = previousReal(multiply);
+        AbstractInsnNode veins = previousReal(sea);
+        return idiv != null
+                && idiv.getOpcode() == Opcodes.IDIV
+                && sixtyFour instanceof IntInsnNode
+                && sixtyFour.getOpcode() == Opcodes.BIPUSH
+                && ((IntInsnNode) sixtyFour).operand == 64
+                && multiply != null
+                && multiply.getOpcode() == Opcodes.IMUL
+                && sea instanceof VarInsnNode
+                && sea.getOpcode() == Opcodes.ILOAD
+                && ((VarInsnNode) sea).var == 7
+                && veins instanceof IntInsnNode
+                && veins.getOpcode() == Opcodes.BIPUSH
+                && (((IntInsnNode) veins).operand == 15
+                        || ((IntInsnNode) veins).operand == 20
+                        || ((IntInsnNode) veins).operand == 25);
+    }
 
+    private static byte[] transformBetaOres(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+        int patched = 0;
+        for (MethodNode method : classNode.methods) {
+            if (!"func_73153_a".equals(method.name) && !"populate".equals(method.name)) {
+                continue;
+            }
+            for (AbstractInsnNode insn = method.instructions.getFirst();
+                 insn != null;
+                 insn = insn.getNext()) {
+                if (insn.getOpcode() != Opcodes.IF_ICMPGE || !(insn instanceof JumpInsnNode)) {
+                    continue;
+                }
+                if (!loopCountsVanillaOre(method, (JumpInsnNode) insn)) {
+                    continue;
+                }
+                InsnList scale = new InsnList();
+                scale.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                scale.add(new FieldInsnNode(
+                        Opcodes.GETFIELD,
+                        "owg/generator/ChunkGeneratorBeta",
+                        "worldObj",
+                        "Lnet/minecraft/world/World;"));
+                scale.add(new VarInsnNode(Opcodes.ILOAD, 2));
+                scale.add(new VarInsnNode(Opcodes.ILOAD, 3));
+                scale.add(new MethodInsnNode(
+                        Opcodes.INVOKESTATIC,
+                        "doc/fasterminecarts/OreRates",
+                        "scaleVanillaVeins",
+                        "(ILnet/minecraft/world/World;II)I",
+                        false));
+                method.instructions.insertBefore(insn, scale);
+                patched++;
+            }
+        }
+        if (patched != 6) {
+            throw new RuntimeException(
+                    "Giscraft could not halve beta vanilla ores, patched " + patched + ".");
+        }
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private static boolean loopCountsVanillaOre(MethodNode method, JumpInsnNode jump) {
+        AbstractInsnNode count = previousReal(jump);
+        AbstractInsnNode index = previousReal(count);
+        if (!(index instanceof VarInsnNode)
+                || index.getOpcode() != Opcodes.ILOAD
+                || ((VarInsnNode) index).var != 13) {
+            return false;
+        }
+        if (count == null
+                || (count.getOpcode() != Opcodes.BIPUSH
+                        && count.getOpcode() != Opcodes.SIPUSH
+                        && count.getOpcode() != Opcodes.ICONST_1
+                        && count.getOpcode() != Opcodes.ICONST_2)) {
+            return false;
+        }
+        LabelNode end = jump.label;
+        for (AbstractInsnNode insn = jump.getNext(); insn != null && insn != end; insn = insn.getNext()) {
+            if (insn.getOpcode() == Opcodes.GETSTATIC
+                    && insn instanceof FieldInsnNode
+                    && isVanillaOreField((FieldInsnNode) insn)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static boolean isVanillaOreField(FieldInsnNode field) {
+        String name = field.name;
+        return "field_150365_q".equals(name)
+                || "field_150366_p".equals(name)
+                || "field_150352_o".equals(name)
+                || "field_150450_ax".equals(name)
+                || "field_150482_ag".equals(name)
+                || "field_150369_x".equals(name)
+                || "coal_ore".equals(name)
+                || "iron_ore".equals(name)
+                || "gold_ore".equals(name)
+                || "redstone_ore".equals(name)
+                || "diamond_ore".equals(name)
+                || "lapis_ore".equals(name);
     }
 
     private static boolean isFullGrownPlant(String className) {
