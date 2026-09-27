@@ -17,6 +17,16 @@ stone without a pickaxe), makes fishing catch only the original vanilla fish,
 and changes chest collision and rendering to use a full-cube shape with a
 limited lid angle.
 
+In the overworld, IC2 copper, tin, and uranium are scarcer on land than in the deep ocean. A deep-ocean chunk averages three times as many blocks of each:
+
+| Ore | Land | Deep ocean |
+|---|---:|---:|
+| Copper | 33 | 99 |
+| Tin | 25 | 76 |
+| Uranium | 2.2 | 6.5 |
+
+Copper and uranium vary by a vein or two from chunk to chunk; those figures are the average. Vanilla coal, iron, gold, redstone, diamond, and lapis keep their normal rate on land and are halved in deep ocean. Other dimensions are unchanged. Chunks already saved on disk keep the ores they were generated with.
+
 ## Build
 
 Use Java 8.
