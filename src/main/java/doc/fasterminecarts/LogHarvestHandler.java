@@ -17,7 +17,6 @@ import net.minecraftforge.oredict.OreDictionary;
  */
 public final class LogHarvestHandler {
     private static final int AXE_HARVEST_LEVEL = 0;
-    private static final float BARE_HAND_SPEED_FACTOR = 0.3F;
 
     public static void applyAxeRequirement() {
         Blocks.log.setHarvestLevel("axe", AXE_HARVEST_LEVEL);
@@ -51,17 +50,13 @@ public final class LogHarvestHandler {
         event.success = isHoldingAxe(event.entityPlayer);
     }
 
-    @SubscribeEvent
-    public void onBreakSpeed(PlayerEvent.BreakSpeed event) {
-        if (!isLog(event.block, event.metadata)) {
-            return;
-        }
-
-        if (isHoldingAxe(event.entityPlayer)) {
-            return;
-        }
-
-        event.newSpeed = event.originalSpeed * BARE_HAND_SPEED_FACTOR;
+    /**
+     * Wood does not require a tool, so Forge reports logs as harvestable by
+     * hand. Waila uses that result. Logs that require an axe skip it and use
+     * the normal tool check, which is also what slows a bare-handed punch.
+     */
+    public static boolean requiresAxe(Block block, int meta) {
+        return isLog(block, meta);
     }
 
     @SubscribeEvent

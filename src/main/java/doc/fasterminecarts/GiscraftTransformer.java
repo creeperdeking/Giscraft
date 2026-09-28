@@ -49,6 +49,9 @@ public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_OLD_SUGAR_CANE_GEN = "owg.deco.OldGenReed";
     private static final String TARGET_OLD_CACTUS_GEN = "owg.deco.OldGenCactus";
     private static final String TARGET_BETA_GENERATOR = "owg.generator.ChunkGeneratorBeta";
+    private static final String TARGET_FORGE_HOOKS = "net.minecraftforge.common.ForgeHooks";
+    private static final String HARVEST_CHECK_DESC =
+            "(Lnet/minecraft/block/Block;Lnet/minecraft/entity/player/EntityPlayer;I)Z";
     private static final String CHEST_BOUNDS_DESC =
             "(Lnet/minecraft/world/IBlockAccess;III)V";
     private static final String LEAF_APPLE_DROP_DESC =
@@ -91,6 +94,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_BETA_GENERATOR.equals(transformedName) || TARGET_BETA_GENERATOR.equals(name)) {
             return transformBetaOres(basicClass);
+        }
+
+        if (TARGET_FORGE_HOOKS.equals(transformedName)) {
+            return transformLogHarvestCheck(basicClass);
         }
 
         if (TARGET_PLAYER_CLASS.equals(transformedName)) {
@@ -1062,6 +1069,55 @@ public final class GiscraftTransformer implements IClassTransformer {
         if (!patched) {
             throw new RuntimeException(
                     "Giscraft could not center the pause menu title.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformLogHarvestCheck(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (!"canHarvestBlock".equals(method.name) || !HARVEST_CHECK_DESC.equals(method.desc)) {
+                continue;
+            }
+
+            AbstractInsnNode insn = method.instructions.getFirst();
+            while (insn != null) {
+                if (insn.getOpcode() == Opcodes.INVOKEVIRTUAL && insn instanceof MethodInsnNode) {
+                    MethodInsnNode call = (MethodInsnNode) insn;
+                    if ("isToolNotRequired".equals(call.name) || "func_76229_l".equals(call.name)) {
+                        AbstractInsnNode next = nextReal(insn);
+                        if (next instanceof JumpInsnNode && next.getOpcode() == Opcodes.IFEQ) {
+                            JumpInsnNode skip = (JumpInsnNode) next;
+                            InsnList inject = new InsnList();
+                            inject.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                            inject.add(new VarInsnNode(Opcodes.ILOAD, 2));
+                            inject.add(new MethodInsnNode(
+                                    Opcodes.INVOKESTATIC,
+                                    "doc/fasterminecarts/LogHarvestHandler",
+                                    "requiresAxe",
+                                    "(Lnet/minecraft/block/Block;I)Z",
+                                    false));
+                            inject.add(new JumpInsnNode(Opcodes.IFNE, skip.label));
+                            method.instructions.insert(skip, inject);
+                            patched = true;
+                            break;
+                        }
+                    }
+                }
+                insn = insn.getNext();
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not patch log harvest checks.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);

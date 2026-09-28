@@ -1,5 +1,7 @@
 package doc.fasterminecarts;
 
+import java.lang.reflect.Method;
+
 import net.minecraft.client.model.ModelIronGolem;
 import net.minecraft.client.renderer.OpenGlHelper;
 import net.minecraft.client.renderer.Tessellator;
@@ -11,59 +13,33 @@ import net.minecraft.init.Blocks;
 import net.minecraft.util.IIcon;
 
 import org.lwjgl.opengl.GL11;
-import org.lwjgl.opengl.GL12;
 
 public class RenderFlowerGolem extends RenderIronGolem {
-    @Override
-    public void doRender(EntityIronGolem entity, double x, double y, double z, float yaw, float partial) {
-        super.doRender(entity, x, y, z, yaw, partial);
-        GL11.glColorMask(false, false, false, false);
-        GL11.glDepthMask(false);
-        Tessellator tessellator = Tessellator.instance;
-        tessellator.startDrawingQuads();
-        tessellator.addVertex(0.0D, 0.0D, 0.0D);
-        tessellator.addVertex(0.0D, 0.0D, 0.0D);
-        tessellator.addVertex(0.0D, 0.0D, 0.0D);
-        tessellator.addVertex(0.0D, 0.0D, 0.0D);
-        tessellator.draw();
-        GL11.glDepthMask(true);
-        GL11.glColorMask(true, true, true, true);
-    }
-
     @Override
     protected void renderEquippedItems(EntityIronGolem golem, float partial) {
         if (!(golem instanceof EntityFlowerGolem) || golem.getHoldRoseTick() == 0) {
             return;
         }
-        GL11.glEnable(GL12.GL_RESCALE_NORMAL);
-        GL11.glPushMatrix();
+        Gl.pushMatrix();
         float arm = ((ModelIronGolem) this.mainModel).ironGolemRightArm.rotateAngleX;
-        GL11.glRotatef(5.0F + 180.0F * arm / (float) Math.PI, 1.0F, 0.0F, 0.0F);
-        GL11.glTranslatef(-0.6875F, 1.25F, -0.9375F);
-        GL11.glRotatef(90.0F, 1.0F, 0.0F, 0.0F);
-        float scale = 0.8F;
-        GL11.glScalef(scale, -scale, scale);
+        Gl.rotate(5.0F + 180.0F * arm / (float) Math.PI, 1.0F, 0.0F, 0.0F);
+        Gl.translate(-0.6875F, 1.25F, -0.9375F);
+        Gl.rotate(90.0F, 1.0F, 0.0F, 0.0F);
+        Gl.scale(0.8F, -0.8F, 0.8F);
         int light = golem.getBrightnessForRender(partial);
         OpenGlHelper.setLightmapTextureCoords(
                 OpenGlHelper.lightmapTexUnit,
                 (float) (light & 65535),
                 (float) (light >> 16));
-        GL11.glColor4f(1.0F, 1.0F, 1.0F, 1.0F);
+        Gl.color(1.0F, 1.0F, 1.0F, 1.0F);
         this.bindTexture(TextureMap.locationBlocksTexture);
-        boolean cull = GL11.glIsEnabled(GL11.GL_CULL_FACE);
-        boolean lighting = GL11.glIsEnabled(GL11.GL_LIGHTING);
-        GL11.glDisable(GL11.GL_CULL_FACE);
-        GL11.glDisable(GL11.GL_LIGHTING);
-        GL11.glEnable(GL11.GL_ALPHA_TEST);
-        drawPoppy();
-        if (lighting) {
-            GL11.glEnable(GL11.GL_LIGHTING);
+        boolean cull = Gl.isEnabled(GL11.GL_CULL_FACE);
+        Gl.enable(GL11.GL_CULL_FACE);
+        drawPoppy(light);
+        if (!cull) {
+            Gl.disable(GL11.GL_CULL_FACE);
         }
-        if (cull) {
-            GL11.glEnable(GL11.GL_CULL_FACE);
-        }
-        GL11.glPopMatrix();
-        GL11.glDisable(GL12.GL_RESCALE_NORMAL);
+        Gl.popMatrix();
     }
 
     @Override
@@ -71,56 +47,118 @@ public class RenderFlowerGolem extends RenderIronGolem {
         this.renderEquippedItems((EntityIronGolem) entity, partial);
     }
 
-    private static void drawPoppy() {
+    private static void drawPoppy(int light) {
         IIcon icon = Blocks.red_flower.getIcon(0, 0);
-        float minU = icon.getMinU();
-        float minV = icon.getMinV();
-        float maxU = icon.getMaxU();
-        float maxV = icon.getMaxV();
-        float x0 = -0.45F;
-        float x1 = 0.45F;
-        float y0 = -0.5F;
-        float y1 = 0.5F;
-        float z0 = -0.45F;
-        float z1 = 0.45F;
-        GL11.glBegin(GL11.GL_QUADS);
-        flowerPlane(x0, y1, z0, x0, y0, z0, x1, y0, z1, x1, y1, z1, minU, minV, maxU, maxV);
-        flowerPlane(x0, y1, z1, x0, y0, z1, x1, y0, z0, x1, y1, z0, minU, minV, maxU, maxV);
-        GL11.glEnd();
+        double minU = icon.getMinU();
+        double minV = icon.getMinV();
+        double maxU = icon.getMaxU();
+        double maxV = icon.getMaxV();
+        double x0 = -0.45D;
+        double x1 = 0.45D;
+        double y0 = -0.5D;
+        double y1 = 0.5D;
+        double z0 = -0.45D;
+        double z1 = 0.45D;
+        Tessellator tessellator = Tessellator.instance;
+        tessellator.startDrawingQuads();
+        tessellator.setBrightness(light);
+        tessellator.setColorOpaque_F(1.0F, 1.0F, 1.0F);
+        tessellator.setNormal(0.0F, -1.0F, 0.0F);
+        tessellator.addVertexWithUV(x0, y1, z0, minU, minV);
+        tessellator.addVertexWithUV(x0, y0, z0, minU, maxV);
+        tessellator.addVertexWithUV(x1, y0, z1, maxU, maxV);
+        tessellator.addVertexWithUV(x1, y1, z1, maxU, minV);
+        tessellator.addVertexWithUV(x1, y1, z1, minU, minV);
+        tessellator.addVertexWithUV(x1, y0, z1, minU, maxV);
+        tessellator.addVertexWithUV(x0, y0, z0, maxU, maxV);
+        tessellator.addVertexWithUV(x0, y1, z0, maxU, minV);
+        tessellator.addVertexWithUV(x0, y1, z1, minU, minV);
+        tessellator.addVertexWithUV(x0, y0, z1, minU, maxV);
+        tessellator.addVertexWithUV(x1, y0, z0, maxU, maxV);
+        tessellator.addVertexWithUV(x1, y1, z0, maxU, minV);
+        tessellator.addVertexWithUV(x1, y1, z0, minU, minV);
+        tessellator.addVertexWithUV(x1, y0, z0, minU, maxV);
+        tessellator.addVertexWithUV(x0, y0, z1, maxU, maxV);
+        tessellator.addVertexWithUV(x0, y1, z1, maxU, minV);
+        tessellator.draw();
     }
 
-    private static void flowerPlane(
-            float x0,
-            float y0,
-            float z0,
-            float x1,
-            float y1,
-            float z1,
-            float x2,
-            float y2,
-            float z2,
-            float x3,
-            float y3,
-            float z3,
-            float minU,
-            float minV,
-            float maxU,
-            float maxV) {
-        GL11.glTexCoord2f(minU, minV);
-        GL11.glVertex3f(x0, y0, z0);
-        GL11.glTexCoord2f(minU, maxV);
-        GL11.glVertex3f(x1, y1, z1);
-        GL11.glTexCoord2f(maxU, maxV);
-        GL11.glVertex3f(x2, y2, z2);
-        GL11.glTexCoord2f(maxU, minV);
-        GL11.glVertex3f(x3, y3, z3);
-        GL11.glTexCoord2f(maxU, minV);
-        GL11.glVertex3f(x3, y3, z3);
-        GL11.glTexCoord2f(maxU, maxV);
-        GL11.glVertex3f(x2, y2, z2);
-        GL11.glTexCoord2f(minU, maxV);
-        GL11.glVertex3f(x1, y1, z1);
-        GL11.glTexCoord2f(minU, minV);
-        GL11.glVertex3f(x0, y0, z0);
+    /**
+     * Angelica draws entities through its own matrix stack. GL11 calls in this mod are not
+     * rewritten onto that stack, so a poppy built with them never lands in the raised hand.
+     */
+    private static final class Gl {
+        private static final Method PUSH = find("glPushMatrix");
+        private static final Method POP = find("glPopMatrix");
+        private static final Method TRANSLATE = find("glTranslatef", Float.TYPE, Float.TYPE, Float.TYPE);
+        private static final Method ROTATE = find("glRotatef", Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE);
+        private static final Method SCALE = find("glScalef", Float.TYPE, Float.TYPE, Float.TYPE);
+        private static final Method COLOR = find("glColor4f", Float.TYPE, Float.TYPE, Float.TYPE, Float.TYPE);
+        private static final Method ENABLE = find("glEnable", Integer.TYPE);
+        private static final Method DISABLE = find("glDisable", Integer.TYPE);
+        private static final Method IS_ENABLED = find("glIsEnabled", Integer.TYPE);
+
+        private static Method find(String name, Class<?>... params) {
+            try {
+                return Class.forName("com.gtnewhorizons.angelica.glsm.GLStateManager").getMethod(name, params);
+            } catch (ReflectiveOperationException ignored) {
+                return null;
+            }
+        }
+
+        static void pushMatrix() {
+            call(PUSH, GL11::glPushMatrix);
+        }
+
+        static void popMatrix() {
+            call(POP, GL11::glPopMatrix);
+        }
+
+        static void translate(float x, float y, float z) {
+            call(TRANSLATE, () -> GL11.glTranslatef(x, y, z), x, y, z);
+        }
+
+        static void rotate(float angle, float x, float y, float z) {
+            call(ROTATE, () -> GL11.glRotatef(angle, x, y, z), angle, x, y, z);
+        }
+
+        static void scale(float x, float y, float z) {
+            call(SCALE, () -> GL11.glScalef(x, y, z), x, y, z);
+        }
+
+        static void color(float r, float g, float b, float a) {
+            call(COLOR, () -> GL11.glColor4f(r, g, b, a), r, g, b, a);
+        }
+
+        static void enable(int cap) {
+            call(ENABLE, () -> GL11.glEnable(cap), cap);
+        }
+
+        static void disable(int cap) {
+            call(DISABLE, () -> GL11.glDisable(cap), cap);
+        }
+
+        static boolean isEnabled(int cap) {
+            if (IS_ENABLED == null) {
+                return GL11.glIsEnabled(cap);
+            }
+            try {
+                return ((Boolean) IS_ENABLED.invoke(null, Integer.valueOf(cap))).booleanValue();
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }
+
+        private static void call(Method method, Runnable fallback, Object... args) {
+            if (method == null) {
+                fallback.run();
+                return;
+            }
+            try {
+                method.invoke(null, args);
+            } catch (ReflectiveOperationException failure) {
+                throw new IllegalStateException(failure);
+            }
+        }
     }
 }

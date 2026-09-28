@@ -210,7 +210,7 @@ final class OceanBoundary {
         return chunk;
     }
 
-    private static boolean chunkIsInside(int originX, int originZ, OceanBoundaryMath.Settings settings) {
+    static boolean chunkIsInside(int originX, int originZ, OceanBoundaryMath.Settings settings) {
         double margin = settings.coastlineNoise ? settings.coastlineAmplitude : 0.0D;
         double limit = settings.transitionStart - margin;
         if (limit <= 0.0D) {
@@ -256,6 +256,8 @@ final class OceanBoundary {
                 desired = y < OceanBoundaryConfig.seaLevel ? Blocks.water : Blocks.air;
             } else if (y >= capBottom) {
                 desired = y == target ? top : fill;
+            } else if (shore && y == capBottom - 1) {
+                desired = Blocks.stone;
             } else if (target > surface && y > surface) {
                 Block existing = chunk.getBlock(x, y, z);
                 if (existing == Blocks.air || existing.getMaterial().isLiquid()) {
@@ -317,7 +319,7 @@ final class OceanBoundary {
         int seabed = OceanBoundaryMath.seabedAt(worldX, worldZ, seed, settings);
         int crest = OceanBoundaryMath.iceCrest(worldX, worldZ, seed, settings);
         int bedrockTop = OceanBoundaryMath.bedrockTop(
-                OceanBoundaryMath.intoWall(worldX, worldZ, seed, settings), settings);
+                OceanBoundaryMath.intoBowl(worldX, worldZ, settings), settings);
         for (int y = 0; y <= 255; y++) {
             Block desired = Blocks.air;
             if (y <= bedrockTop) {
@@ -407,6 +409,33 @@ final class OceanBoundary {
         return true;
     }
 
+    static void braceSeabed(Chunk chunk) {
+        if (chunk == null || chunk.worldObj == null) {
+            return;
+        }
+        int seaLevel = OceanBoundaryConfig.seaLevel;
+        boolean changed = false;
+        for (int x = 0; x < 16; x++) {
+            for (int z = 0; z < 16; z++) {
+                for (int y = 2; y < seaLevel; y++) {
+                    Block block = chunk.getBlock(x, y, z);
+                    if (block != Blocks.sand && block != Blocks.gravel) {
+                        continue;
+                    }
+                    Block below = chunk.getBlock(x, y - 1, z);
+                    if (below != Blocks.air && !isWater(below) && !isLava(below)) {
+                        continue;
+                    }
+                    setBlock(chunk, x, y - 1, z, Blocks.stone);
+                    changed = true;
+                }
+            }
+        }
+        if (changed) {
+            chunk.isModified = true;
+        }
+    }
+
     private static void freezeSurface(Chunk chunk, int x, int z, int seabed, int seaLevel) {
         int surface = seaLevel - 1;
         if (surface <= seabed) {
@@ -457,6 +486,10 @@ final class OceanBoundary {
 
     private static boolean isWater(Block block) {
         return block == Blocks.water || block == Blocks.flowing_water;
+    }
+
+    private static boolean isLava(Block block) {
+        return block == Blocks.lava || block == Blocks.flowing_lava;
     }
 
     private static boolean isOre(Block block) {

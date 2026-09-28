@@ -36,6 +36,9 @@ public final class OceanBoundaryHandler {
                 || OceanBoundaryMath.chunkReachesIcebergs(originX, originZ, settings)) {
             OceanBoundary.stripLooseSnow(chunk);
         }
+        if (!event.world.isRemote && !OceanBoundary.chunkIsInside(originX, originZ, settings)) {
+            OceanBoundary.braceSeabed(chunk);
+        }
     }
 
     @SubscribeEvent
