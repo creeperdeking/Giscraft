@@ -8,21 +8,20 @@ import net.minecraft.util.Direction;
 import net.minecraft.world.World;
 
 /**
- * A portal lit in the Nether builds its Overworld exit at eight times those
- * coordinates, up to 16 blocks away. That exit is refused when it would sit on
- * or past the ice wall.
+ * Refuses a nether portal whose fixed overworld exit would sit on or past the
+ * ice wall, and refuses an overworld portal lit within eight blocks of another.
  */
 public final class NetherLink {
     private static final int NETHER = -1;
-    private static final int PLACEMENT_REACH = 20;
 
     private NetherLink() {}
 
     public static boolean canLight(World world, int x, int y, int z) {
-        if (world == null || world.provider == null || world.provider.dimensionId != NETHER) {
+        if (world == null || world.provider == null) {
             return true;
         }
-        if (!OceanBoundaryConfig.enabled) {
+        int dimension = world.provider.dimensionId;
+        if (dimension != 0 && dimension != NETHER) {
             return true;
         }
         int[] columns = columns(world, x, y, z, 1);
@@ -32,50 +31,10 @@ public final class NetherLink {
         if (columns == null) {
             return true;
         }
-        double scale = world.provider.getMovementFactor();
-        if (scale <= 0.0D) {
-            scale = 8.0D;
+        if (dimension == 0) {
+            return PortalLink.separated(world, columns);
         }
-        long seed = world.getSeed();
-        OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
-        for (int index = 0; index < columns.length; index += 2) {
-            if (exitOutside(columns[index], columns[index + 1], scale, seed, settings)) {
-                return false;
-            }
-        }
-        return true;
-    }
-
-    private static boolean exitOutside(
-            int netherX,
-            int netherZ,
-            double scale,
-            long seed,
-            OceanBoundaryMath.Settings settings) {
-        double lowX = netherX * scale - PLACEMENT_REACH;
-        double highX = (netherX + 1.0D) * scale + PLACEMENT_REACH;
-        double lowZ = netherZ * scale - PLACEMENT_REACH;
-        double highZ = (netherZ + 1.0D) * scale + PLACEMENT_REACH;
-        for (double sampleX = lowX; sampleX <= highX; sampleX += 8.0D) {
-            for (double sampleZ = lowZ; sampleZ <= highZ; sampleZ += 8.0D) {
-                if (outside(sampleX, sampleZ, seed, settings)) {
-                    return true;
-                }
-            }
-            if (outside(sampleX, highZ, seed, settings)) {
-                return true;
-            }
-        }
-        for (double sampleZ = lowZ; sampleZ <= highZ; sampleZ += 8.0D) {
-            if (outside(highX, sampleZ, seed, settings)) {
-                return true;
-            }
-        }
-        return outside(highX, highZ, seed, settings);
-    }
-
-    private static boolean outside(double x, double z, long seed, OceanBoundaryMath.Settings settings) {
-        return OceanBoundaryMath.intoWall((int) Math.floor(x), (int) Math.floor(z), seed, settings) >= 0.0D;
+        return PortalLink.exitInsideWall(world, columns);
     }
 
     /**

@@ -93,6 +93,10 @@ final class OceanBoundaryMath {
         return edge;
     }
 
+    static double iceWallRadius(Settings settings) {
+        return deepEdge(settings) + settings.iceWallGap;
+    }
+
     static double intoWall(int x, int z, long seed, Settings settings) {
         return distanceAt(x, z, settings) - wallAt(x, z, seed, settings);
     }

@@ -51,6 +51,8 @@ public final class Giscraft {
         FMLCommonHandler.instance().bus().register(goldenTools);
         FMLCommonHandler.instance().bus().register(new SprintHandler());
         MinecraftForge.EVENT_BUS.register(new OceanBoundaryHandler());
+        MinecraftForge.EVENT_BUS.register(new NetherBoundaryHandler());
+        MinecraftForge.EVENT_BUS.register(new PortalLink());
         OuterLife outerLife = new OuterLife();
         MinecraftForge.EVENT_BUS.register(outerLife);
         FMLCommonHandler.instance().bus().register(outerLife);
@@ -67,5 +69,6 @@ public final class Giscraft {
         GoldenToolHandler.applyGoldPickaxeHarvestLevel();
         Items.golden_carrot.setPotionEffect(PotionHelper.speckledMelonEffect);
         OceanBoundaryHandler.registerIceWall();
+        NetherBoundaryHandler.registerPass();
     }
 }
