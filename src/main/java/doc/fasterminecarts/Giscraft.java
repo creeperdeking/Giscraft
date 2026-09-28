@@ -32,6 +32,8 @@ public final class Giscraft {
     public void preInitialize(FMLPreInitializationEvent event) {
         OceanBoundaryConfig.load(event);
         ModItems.register();
+        LightCarry.register();
+        CartPortal.register(this);
     }
 
     @Mod.EventHandler

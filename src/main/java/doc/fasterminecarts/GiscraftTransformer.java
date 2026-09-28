@@ -36,6 +36,8 @@ public final class GiscraftTransformer implements IClassTransformer {
             "net.minecraft.entity.player.EntityPlayer";
     private static final String TARGET_PAUSE_MENU =
             "net.minecraft.client.gui.GuiIngameMenu";
+    private static final String TARGET_INVENTORY_GUI =
+            "net.minecraft.client.gui.inventory.GuiInventory";
     private static final String TARGET_HILLS_BIOME =
             "net.minecraft.world.biome.BiomeGenHills";
     private static final String TARGET_ANVIL_CONTAINER =
@@ -50,6 +52,10 @@ public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_OLD_CACTUS_GEN = "owg.deco.OldGenCactus";
     private static final String TARGET_BETA_GENERATOR = "owg.generator.ChunkGeneratorBeta";
     private static final String TARGET_FORGE_HOOKS = "net.minecraftforge.common.ForgeHooks";
+    private static final String TARGET_DYNAMIC_LIGHTS =
+            "com.gtnewhorizons.angelica.dynamiclights.DynamicLights";
+    private static final String TARGET_PORTAL = "net.minecraft.block.BlockPortal";
+    private static final String PORTAL_LIGHT_DESC = "(Lnet/minecraft/world/World;III)Z";
     private static final String HARVEST_CHECK_DESC =
             "(Lnet/minecraft/block/Block;Lnet/minecraft/entity/player/EntityPlayer;I)Z";
     private static final String CHEST_BOUNDS_DESC =
@@ -100,12 +106,20 @@ public final class GiscraftTransformer implements IClassTransformer {
             return transformLogHarvestCheck(basicClass);
         }
 
+        if (TARGET_DYNAMIC_LIGHTS.equals(transformedName) || TARGET_DYNAMIC_LIGHTS.equals(name)) {
+            return transformUnderwaterHeldLight(basicClass);
+        }
+
         if (TARGET_PLAYER_CLASS.equals(transformedName)) {
             return transformSuitMovementHunger(basicClass);
         }
 
         if (TARGET_PAUSE_MENU.equals(transformedName)) {
             return transformPauseMenuTitle(basicClass);
+        }
+
+        if (TARGET_INVENTORY_GUI.equals(transformedName)) {
+            return transformInventoryLightSlot(basicClass);
         }
 
         if (TARGET_HILLS_BIOME.equals(transformedName)) {
@@ -118,6 +132,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_ANVIL_RESULT_SLOT.equals(transformedName)) {
             return transformAnvilResultSlot(basicClass);
+        }
+
+        if (TARGET_PORTAL.equals(transformedName)) {
+            return transformNetherPortal(basicClass);
         }
 
         if (isFullGrownPlant(name) || isFullGrownPlant(transformedName)) {
@@ -1136,6 +1154,185 @@ public final class GiscraftTransformer implements IClassTransformer {
         return previous;
     }
 
+    private static byte[] transformUnderwaterHeldLight(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean keptWetLight = false;
+        int redirected = 0;
+        int slotted = 0;
+
+        for (MethodNode method : classNode.methods) {
+            if (!"getLuminanceFromEntity".equals(method.name)
+                    || !"(Lnet/minecraft/entity/Entity;)I".equals(method.desc)) {
+                continue;
+            }
+            AbstractInsnNode insn = method.instructions.getFirst();
+            while (insn != null) {
+                if (!keptWetLight
+                        && insn.getOpcode() == Opcodes.IFEQ
+                        && insn instanceof JumpInsnNode) {
+                    AbstractInsnNode previous = previousReal(insn);
+                    AbstractInsnNode zero = nextReal(insn);
+                    AbstractInsnNode ret = nextReal(zero);
+                    if (previous instanceof MethodInsnNode
+                            && isWaterCheck((MethodInsnNode) previous)
+                            && zero != null
+                            && zero.getOpcode() == Opcodes.ICONST_0
+                            && ret != null
+                            && ret.getOpcode() == Opcodes.IRETURN) {
+                        InsnList skip = new InsnList();
+                        skip.add(new InsnNode(Opcodes.POP));
+                        AbstractInsnNode resume = new JumpInsnNode(Opcodes.GOTO, ((JumpInsnNode) insn).label);
+                        skip.add(resume);
+                        method.instructions.insert(insn, skip);
+                        method.instructions.remove(insn);
+                        keptWetLight = true;
+                        insn = resume;
+                    }
+                }
+                if (insn.getOpcode() == Opcodes.INVOKESTATIC && insn instanceof MethodInsnNode) {
+                    MethodInsnNode call = (MethodInsnNode) insn;
+                    if ("com/gtnewhorizons/angelica/dynamiclights/DynamicLights".equals(call.owner)
+                            && "getLuminanceFromItemStack".equals(call.name)
+                            && "(Lnet/minecraft/item/ItemStack;)I".equals(call.desc)) {
+                        LabelNode keep = new LabelNode();
+                        LabelNode done = new LabelNode();
+                        InsnList test = new InsnList();
+                        test.add(new InsnNode(Opcodes.DUP));
+                        test.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                        test.add(new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                "doc/fasterminecarts/HeldLight",
+                                "wetLitTorch",
+                                "(Lnet/minecraft/item/ItemStack;Lnet/minecraft/entity/Entity;)Z",
+                                false));
+                        test.add(new JumpInsnNode(Opcodes.IFEQ, keep));
+                        test.add(new InsnNode(Opcodes.POP));
+                        test.add(new InsnNode(Opcodes.ICONST_0));
+                        test.add(new JumpInsnNode(Opcodes.GOTO, done));
+                        test.add(keep);
+                        method.instructions.insertBefore(call, test);
+                        method.instructions.insert(call, done);
+                        redirected++;
+                        insn = done;
+                    }
+                }
+                if (insn.getOpcode() == Opcodes.ILOAD
+                        && insn instanceof VarInsnNode
+                        && ((VarInsnNode) insn).var == 1) {
+                    AbstractInsnNode ret = nextReal(insn);
+                    if (ret != null && ret.getOpcode() == Opcodes.IRETURN) {
+                        InsnList extra = new InsnList();
+                        extra.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                        extra.add(new MethodInsnNode(
+                                Opcodes.INVOKESTATIC,
+                                "doc/fasterminecarts/HeldLight",
+                                "includeSlot",
+                                "(ILnet/minecraft/entity/Entity;)I",
+                                false));
+                        method.instructions.insert(insn, extra);
+                        slotted++;
+                        insn = ret;
+                    }
+                }
+                insn = insn.getNext();
+            }
+        }
+
+        if (!keptWetLight || redirected == 0 || slotted == 0) {
+            throw new RuntimeException(
+                    "Giscraft could not keep handheld light underwater.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_FRAMES) {
+            @Override
+            protected String getCommonSuperClass(String type1, String type2) {
+                try {
+                    return super.getCommonSuperClass(type1, type2);
+                } catch (Throwable ignored) {
+                    return "java/lang/Object";
+                }
+            }
+        };
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformInventoryLightSlot(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+        String left = "field_147003_i";
+        String top = "field_147009_r";
+        for (MethodNode method : classNode.methods) {
+            AbstractInsnNode insn = method.instructions.getFirst();
+            while (insn != null) {
+                if (insn instanceof FieldInsnNode) {
+                    String name = ((FieldInsnNode) insn).name;
+                    if ("guiLeft".equals(name)) {
+                        left = name;
+                    } else if ("guiTop".equals(name)) {
+                        top = name;
+                    }
+                }
+                insn = insn.getNext();
+            }
+        }
+
+        boolean patched = false;
+        for (MethodNode method : classNode.methods) {
+            boolean background = ("drawGuiContainerBackgroundLayer".equals(method.name)
+                    || "func_146976_a".equals(method.name))
+                    && "(FII)V".equals(method.desc);
+            if (!background) {
+                continue;
+            }
+            AbstractInsnNode insn = method.instructions.getFirst();
+            while (insn != null) {
+                if (insn.getOpcode() == Opcodes.RETURN) {
+                    InsnList draw = new InsnList();
+                    draw.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    draw.add(new FieldInsnNode(
+                            Opcodes.GETFIELD,
+                            "net/minecraft/client/gui/inventory/GuiContainer",
+                            left,
+                            "I"));
+                    draw.add(new VarInsnNode(Opcodes.ALOAD, 0));
+                    draw.add(new FieldInsnNode(
+                            Opcodes.GETFIELD,
+                            "net/minecraft/client/gui/inventory/GuiContainer",
+                            top,
+                            "I"));
+                    draw.add(new MethodInsnNode(
+                            Opcodes.INVOKESTATIC,
+                            "doc/fasterminecarts/LightSlotGui",
+                            "draw",
+                            "(II)V",
+                            false));
+                    method.instructions.insertBefore(insn, draw);
+                    patched = true;
+                }
+                insn = insn.getNext();
+            }
+        }
+
+        if (!patched) {
+            throw new RuntimeException("Giscraft could not add the light slot to the inventory.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static boolean isWaterCheck(MethodInsnNode call) {
+        if (call == null || call.getOpcode() != Opcodes.INVOKEVIRTUAL) {
+            return false;
+        }
+        boolean name = "func_70055_a".equals(call.name) || "isInsideOfMaterial".equals(call.name);
+        return name && "(Lnet/minecraft/block/material/Material;)Z".equals(call.desc);
+    }
+
     private static byte[] transformSuitMovementHunger(byte[] basicClass) {
         ClassNode classNode = new ClassNode();
         new ClassReader(basicClass).accept(classNode, 0);
@@ -1192,6 +1389,47 @@ public final class GiscraftTransformer implements IClassTransformer {
         inject.add(new InsnNode(Opcodes.RETURN));
         inject.add(continueLabel);
         return inject;
+    }
+
+    private static byte[] transformNetherPortal(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            boolean light = "func_150000_e".equals(method.name) || "tryToCreatePortal".equals(method.name);
+            if (!light || !PORTAL_LIGHT_DESC.equals(method.desc)) {
+                continue;
+            }
+            InsnList gate = new InsnList();
+            LabelNode allow = new LabelNode();
+            gate.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            gate.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            gate.add(new VarInsnNode(Opcodes.ILOAD, 3));
+            gate.add(new VarInsnNode(Opcodes.ILOAD, 4));
+            gate.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC,
+                    "doc/fasterminecarts/NetherLink",
+                    "canLight",
+                    PORTAL_LIGHT_DESC,
+                    false));
+            gate.add(new JumpInsnNode(Opcodes.IFNE, allow));
+            gate.add(new InsnNode(Opcodes.ICONST_0));
+            gate.add(new InsnNode(Opcodes.IRETURN));
+            gate.add(allow);
+            method.instructions.insert(gate);
+            patched = true;
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not guard nether portal lighting.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
     }
 
 }
