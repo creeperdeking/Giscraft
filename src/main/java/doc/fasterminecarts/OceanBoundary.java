@@ -11,13 +11,16 @@ import net.minecraft.block.Block;
 import net.minecraft.block.BlockOre;
 import net.minecraft.init.Blocks;
 import net.minecraft.tileentity.TileEntity;
+import net.minecraft.tileentity.TileEntitySkull;
 import net.minecraft.world.World;
 import net.minecraft.world.biome.BiomeGenBase;
 import net.minecraft.world.chunk.Chunk;
+import net.minecraft.world.chunk.IChunkProvider;
 import net.minecraft.world.chunk.storage.ExtendedBlockStorage;
 
 final class OceanBoundary {
     private static final Logger LOG = LogManager.getLogger("Giscraft");
+    private static boolean notifyPyramidEdits;
 
     private OceanBoundary() {
     }
@@ -139,6 +142,9 @@ final class OceanBoundary {
         if (!OceanBoundaryConfig.enabled || chunk == null) {
             return;
         }
+        // Beta lakes and mineshafts run in populate and replace whatever is
+        // solid, including bedrock, and a lake can spill into the next chunk.
+        repairLoadedPyramidNeighbors(chunk, seed);
         OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
         int originX = chunk.xPosition << 4;
         int originZ = chunk.zPosition << 4;
@@ -381,15 +387,101 @@ final class OceanBoundary {
             int worldX,
             int worldZ,
             OceanBoundaryMath.Settings settings) {
-        int top = OceanBoundaryMath.pyramidTop(worldX, worldZ, settings);
-        if (top < 1) {
+        int index = OceanBoundaryMath.pyramidIndexAt(worldX, worldZ, settings);
+        if (index < 0) {
             return false;
         }
+        int top = OceanBoundaryMath.pyramidTop(worldX, worldZ, settings);
+        int ground = pyramidGround(chunk, x, z, top);
+        int floor = OceanBoundaryMath.pyramidFloorY(settings);
+        int low = ground + 1;
+        int high = top;
+        if (low > floor - 4) {
+            low = floor - 4;
+        }
+        if (high < floor + 9) {
+            high = floor + 9;
+        }
+        if (high > 255) {
+            high = 255;
+        }
+        if (low < 1) {
+            low = 1;
+        }
+        if (high < low) {
+            return false;
+        }
+        int[] meta = new int[1];
+        boolean changed = false;
+        for (int y = low; y <= high; y++) {
+            Block block = pyramidBlock(
+                    chunk, x, z, worldX, worldZ, y, ground, index, settings, meta);
+            if (block == null) {
+                continue;
+            }
+            if (chunk.getBlock(x, y, z) == block && chunk.getBlockMetadata(x, y, z) == meta[0]) {
+                if (block == Blocks.skull) {
+                    changed |= ensureSkeletonSkull(chunk, x, y, z);
+                }
+                continue;
+            }
+            setBlock(chunk, x, y, z, block, meta[0]);
+            if (notifyPyramidEdits && chunk.worldObj != null) {
+                chunk.worldObj.markBlockForUpdate(worldX, y, worldZ);
+            }
+            if (block == Blocks.skull) {
+                changed |= ensureSkeletonSkull(chunk, x, y, z);
+            }
+            changed = true;
+        }
+        return changed;
+    }
+
+    private static void repairLoadedPyramidNeighbors(Chunk chunk, long seed) {
+        World world = chunk.worldObj;
+        if (world == null || world.isRemote) {
+            return;
+        }
+        IChunkProvider provider = world.getChunkProvider();
+        if (provider == null) {
+            return;
+        }
+        int centerX = chunk.xPosition;
+        int centerZ = chunk.zPosition;
+        notifyPyramidEdits = true;
+        try {
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dz = -1; dz <= 1; dz++) {
+                    if (dx == 0 && dz == 0) {
+                        continue;
+                    }
+                    int chunkX = centerX + dx;
+                    int chunkZ = centerZ + dz;
+                    if (!provider.chunkExists(chunkX, chunkZ)) {
+                        continue;
+                    }
+                    Chunk neighbor = world.getChunkFromChunkCoords(chunkX, chunkZ);
+                    if (neighbor == null || neighbor == chunk) {
+                        continue;
+                    }
+                    refreshPyramids(neighbor, seed);
+                }
+            }
+        } finally {
+            notifyPyramidEdits = false;
+        }
+    }
+
+    private static int pyramidGround(Chunk chunk, int x, int z, int top) {
         int ground = 0;
-        for (int y = top; y >= 1; y--) {
+        int start = top > 255 ? 255 : top;
+        for (int y = start; y >= 1; y--) {
             Block block = chunk.getBlock(x, y, z);
             if (block == Blocks.air
                     || block == Blocks.brick_block
+                    || block == Blocks.bedrock
+                    || block == Blocks.ladder
+                    || block == Blocks.skull
                     || block == Blocks.ice
                     || block == Blocks.packed_ice
                     || isWater(block)) {
@@ -398,15 +490,160 @@ final class OceanBoundary {
             ground = y;
             break;
         }
-        if (top <= ground) {
-            return false;
-        }
-        for (int y = ground + 1; y <= top; y++) {
-            if (chunk.getBlock(x, y, z) != Blocks.brick_block) {
-                setBlock(chunk, x, y, z, Blocks.brick_block);
+        return ground;
+    }
+
+    /**
+     * Brick veneer, then one bedrock block, then a dry room. The room's floor is
+     * twenty blocks below sea level. A water tunnel under that floor comes up
+     * through a hole on the side facing the middle of the map. A brick tube of
+     * water rises ten blocks from the outer mouth so the entrance shows up
+     * underwater. Brick closes the foot of that tube except the tunnel.
+     * Water does not flow upward, so the room stays dry.
+     */
+    private static Block pyramidBlock(
+            Chunk chunk,
+            int x,
+            int z,
+            int worldX,
+            int worldZ,
+            int y,
+            int ground,
+            int index,
+            OceanBoundaryMath.Settings settings,
+            int[] meta) {
+        meta[0] = 0;
+        int centerX = OceanBoundaryMath.pyramidCenterXAt(index, settings);
+        int centerZ = OceanBoundaryMath.pyramidCenterZAt(index, settings);
+        int peak = OceanBoundaryMath.pyramidPeakY(settings);
+        int floor = OceanBoundaryMath.pyramidFloorY(settings);
+        int offsetX = centerX - settings.centerX;
+        int offsetZ = centerZ - settings.centerZ;
+        boolean alongX = offsetX != 0;
+        int faceSign = alongX ? -Integer.signum(offsetX) : -Integer.signum(offsetZ);
+        int out = faceSign * (alongX ? worldX - centerX : worldZ - centerZ);
+        int side = alongX ? worldZ - centerZ : worldX - centerX;
+        if (worldZ == centerZ && Math.abs(worldX - centerX) <= 1) {
+            if (y == floor + 2 || (y == floor + 1 && worldX == centerX)) {
+                return Blocks.bedrock;
+            }
+            if (y == floor + 1) {
+                return Blocks.air;
+            }
+            if (y == floor + 3) {
+                TileEntity existing = chunk.getTileEntityUnsafe(x, y, z);
+                if (chunk.getBlock(x, y, z) == Blocks.skull
+                        && existing instanceof TileEntitySkull
+                        && ((TileEntitySkull) existing).func_145904_a() == 1) {
+                    return null;
+                }
+                meta[0] = 1;
+                return Blocks.skull;
             }
         }
+        int radiusAtFloor = peak - floor;
+        int shaftInner = radiusAtFloor - 8;
+        int mouth = radiusAtFloor + 3;
+        boolean inWidth = side >= -1 && side <= 1;
+        boolean inRun = out >= shaftInner && out <= mouth;
+        boolean inShaft = inWidth && out >= shaftInner && out <= shaftInner + 2;
+        if (inWidth && inRun && y >= floor - 3 && y <= floor - 1 && faceSign != 0) {
+            return Blocks.water;
+        }
+        if (inWidth && inRun && y == floor - 4 && faceSign != 0) {
+            return Blocks.brick_block;
+        }
+        if (inShaft && y == floor && faceSign != 0) {
+            return Blocks.air;
+        }
+        int tubeBox = Math.max(Math.abs(side), Math.abs(out - mouth));
+        if (faceSign != 0 && tubeBox <= 2 && y >= floor - 4 && y < floor) {
+            return Blocks.brick_block;
+        }
+        if (faceSign != 0 && y >= floor && y < floor + 10 && tubeBox <= 2) {
+            return tubeBox < 2 ? Blocks.water : Blocks.brick_block;
+        }
+        // The old ladder stood on a bedrock pillar just inside the swim-up hole.
+        if (side == 0 && out == shaftInner - 1 && y > floor && y <= floor + 4 && faceSign != 0) {
+            Block pillar = chunk.getBlock(x, y, z);
+            if (pillar == Blocks.bedrock || pillar == Blocks.ladder) {
+                return Blocks.air;
+            }
+        }
+
+        int span = Math.max(Math.abs(worldX - centerX), Math.abs(worldZ - centerZ));
+        int shellRadius = peak - y;
+        if (span > shellRadius || shellRadius < 0) {
+            return null;
+        }
+        int depth = shellRadius - span;
+        if (depth < OceanBoundaryMath.PYRAMID_VENEER) {
+            return Blocks.brick_block;
+        }
+        if (depth < OceanBoundaryMath.PYRAMID_VENEER + OceanBoundaryMath.PYRAMID_LINING) {
+            return Blocks.bedrock;
+        }
+        if (y > floor) {
+            Block inside = chunk.getBlock(x, y, z);
+            if (inside == Blocks.brick_block
+                    || inside == Blocks.stone
+                    || inside == Blocks.ladder
+                    || inside == Blocks.ice
+                    || inside == Blocks.packed_ice
+                    || isWater(inside)) {
+                return Blocks.air;
+            }
+            return null;
+        }
+        if (y == floor) {
+            return Blocks.bedrock;
+        }
+        return Blocks.brick_block;
+    }
+
+    private static boolean ensureSkeletonSkull(Chunk chunk, int x, int y, int z) {
+        TileEntity existing = chunk.getTileEntityUnsafe(x, y, z);
+        if (existing instanceof TileEntitySkull) {
+            int kind = ((TileEntitySkull) existing).func_145904_a();
+            if (kind == 0 || kind == 1) {
+                return false;
+            }
+        }
+        TileEntitySkull skull = new TileEntitySkull();
+        skull.func_152107_a(0);
+        skull.func_145903_a(0);
+        skull.xCoord = (chunk.xPosition << 4) + x;
+        skull.yCoord = y;
+        skull.zCoord = (chunk.zPosition << 4) + z;
+        chunk.addTileEntity(skull);
         return true;
+    }
+
+    static void refreshPyramids(Chunk chunk, long seed) {
+        if (!OceanBoundaryConfig.enabled || chunk == null) {
+            return;
+        }
+        OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
+        int originX = chunk.xPosition << 4;
+        int originZ = chunk.zPosition << 4;
+        if (!OceanBoundaryMath.chunkReachesPyramid(originX, originZ, settings)) {
+            return;
+        }
+        boolean changed = false;
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                if (writePyramid(chunk, localX, localZ, originX + localX, originZ + localZ, settings)) {
+                    changed = true;
+                }
+            }
+        }
+        if (!changed) {
+            return;
+        }
+        removeOrphanTileEntities(chunk);
+        discardEmptySections(chunk);
+        chunk.generateSkylightMap();
+        chunk.isModified = true;
     }
 
     static void braceSeabed(Chunk chunk) {
@@ -442,6 +679,117 @@ final class OceanBoundary {
             return;
         }
         setBlock(chunk, x, surface, z, Blocks.ice);
+    }
+
+    static void sealSpilledLakes(Chunk chunk, long seed) {
+        World world = chunk == null ? null : chunk.worldObj;
+        if (world == null || world.isRemote) {
+            return;
+        }
+        IChunkProvider provider = world.getChunkProvider();
+        if (provider == null) {
+            return;
+        }
+        OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
+        int originX = chunk.xPosition << 4;
+        int originZ = chunk.zPosition << 4;
+        boolean nearSnow = false;
+        for (int padX = -16; padX <= 16 && !nearSnow; padX += 16) {
+            for (int padZ = -16; padZ <= 16; padZ += 16) {
+                if (OceanBoundaryMath.chunkReachesSnow(originX + padX, originZ + padZ, settings)) {
+                    nearSnow = true;
+                    break;
+                }
+            }
+        }
+        if (!nearSnow) {
+            return;
+        }
+        sealFrozenChunk(chunk, seed, false);
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dz = -1; dz <= 1; dz++) {
+                if (dx == 0 && dz == 0) {
+                    continue;
+                }
+                int chunkX = chunk.xPosition + dx;
+                int chunkZ = chunk.zPosition + dz;
+                if (!provider.chunkExists(chunkX, chunkZ)) {
+                    continue;
+                }
+                Chunk neighbor = world.getChunkFromChunkCoords(chunkX, chunkZ);
+                if (neighbor == null || neighbor == chunk) {
+                    continue;
+                }
+                sealFrozenChunk(neighbor, seed, true);
+            }
+        }
+    }
+
+    static void sealFrozenChunk(Chunk chunk, long seed) {
+        sealFrozenChunk(chunk, seed, false);
+    }
+
+    private static void sealFrozenChunk(Chunk chunk, long seed, boolean notify) {
+        if (!OceanBoundaryConfig.enabled || chunk == null) {
+            return;
+        }
+        OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
+        int originX = chunk.xPosition << 4;
+        int originZ = chunk.zPosition << 4;
+        boolean changed = false;
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int worldX = originX + localX;
+                int worldZ = originZ + localZ;
+                if (OceanBoundaryMath.bandAt(worldX, worldZ, seed, settings) != OceanBoundaryMath.BAND_FROZEN) {
+                    continue;
+                }
+                int seabed = OceanBoundaryMath.seabedAt(worldX, worldZ, seed, settings);
+                if (!frozenColumnBroken(chunk, localX, localZ, seabed, settings.seaLevel)) {
+                    continue;
+                }
+                writeOuterColumn(
+                        chunk, localX, localZ, worldX, worldZ, seed, settings, OceanBoundaryMath.BAND_FROZEN);
+                changed = true;
+                if (notify && chunk.worldObj != null && !chunk.worldObj.isRemote) {
+                    int top = settings.seaLevel;
+                    int bottom = seabed < 1 ? 1 : seabed;
+                    for (int y = bottom; y <= top && y < 256; y++) {
+                        chunk.worldObj.markBlockForUpdate(worldX, y, worldZ);
+                    }
+                }
+            }
+        }
+        if (!changed) {
+            return;
+        }
+        chunk.generateSkylightMap();
+        chunk.isModified = true;
+    }
+
+    private static boolean frozenColumnBroken(Chunk chunk, int x, int z, int seabed, int seaLevel) {
+        int cap = seaLevel - 1;
+        if (cap <= seabed || cap > 255) {
+            return false;
+        }
+        Block top = chunk.getBlock(x, cap, z);
+        if (top == Blocks.packed_ice) {
+            return false;
+        }
+        if (top != Blocks.ice) {
+            return true;
+        }
+        int floor = seabed + 1;
+        if (floor < 1) {
+            floor = 1;
+        }
+        for (int y = floor; y < cap; y++) {
+            Block block = chunk.getBlock(x, y, z);
+            if (block != Blocks.packed_ice && !isWater(block)) {
+                return true;
+            }
+        }
+        return false;
     }
 
     static void stripLooseSnow(Chunk chunk) {

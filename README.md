@@ -65,7 +65,7 @@ Press Ctrl+Shift+D, choose Attach to Minecraft (5005), then press F5.
 
 ## Map preview
 
-`OceanBoundaryPreview` draws a top-down picture of a seed after the ocean boundary is applied. It samples Old World Gen's beta terrain, so the picture shows beta land and water plus the boundary. Run it with Java 8 against the built jar:
+`OceanBoundaryPreview` draws a top-down picture of a seed after the climate shift and the ocean boundary. The center stays beta 1.7.3. By about 1500 blocks the landmasses widen. North rises into cold plateaus, south rolls into hot dunes, and the beta biome chart gets wetter near the center latitude and drier toward the far north and south. Run it with Java 8 against the built jar:
 
 ```text
 java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --seed 8675309 --out terrain-preview.png
@@ -90,7 +90,7 @@ After 1536 blocks of deep ocean the ice wall rises from the sea floor. Bedrock c
 
 A default terrain map is 320 pixels on a side and takes about a minute. `--pixels 640` is sharper and takes a few minutes. `--zone` skips the terrain and draws only the ocean zones, which is immediate.
 
-The beta picture needs `NostalgiaGenerator` on the build machine and again when you run the tool. The build looks for `C:/Users/alexi/curseforge/minecraft/Instances/1.7.10/mods/NostalgiaGenerator-1.0.0-1.7.10.jar`, or the path you pass with `-PowgJar=...`. At runtime the tool looks in that same mods folder, or uses `--owg path\to\NostalgiaGenerator.jar`. The biome colors follow the original beta climate. Worlds that switch Old World Gen to a later biome set will not match the picture.
+The beta picture needs `NostalgiaGenerator` on the build machine and again when you run the tool. The build looks for `C:/Users/alexi/curseforge/minecraft/Instances/1.7.10/mods/NostalgiaGenerator-1.0.0-1.7.10.jar`, or the path you pass with `-PowgJar=...`. At runtime the tool looks in that same mods folder, or uses `--owg path\to\NostalgiaGenerator.jar`. Biome colors use the beta chart after that latitude shift. Worlds that switch Old World Gen to a later biome set will not match the picture.
 
 With no `--config`, the tool reads `Instances/1.7.10/config/giscraft.cfg` when that file exists, including `circular`. `--config path\to\giscraft.cfg` selects another file. Options after it replace those values. The same names exist in the config:
 
@@ -115,6 +115,7 @@ With no `--config`, the tool reads `Instances/1.7.10/config/giscraft.cfg` when t
 --deepOceanTransition <blocks>
 --iceWallGap <blocks>
 --iceSnowLead <blocks>
+--icebergLead <blocks>
 --iceShelfLength <blocks>
 --bedrockRun <blocks>
 --iceWallHeight <blocks>

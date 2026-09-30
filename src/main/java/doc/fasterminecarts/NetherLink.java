@@ -9,7 +9,8 @@ import net.minecraft.world.World;
 
 /**
  * Refuses a nether portal whose fixed overworld exit would sit on or past the
- * ice wall, and refuses an overworld portal lit within eight blocks of another.
+ * ice wall, and refuses a portal in either dimension that would share its exit
+ * with one that is already lit.
  */
 public final class NetherLink {
     private static final int NETHER = -1;
@@ -32,9 +33,9 @@ public final class NetherLink {
             return true;
         }
         if (dimension == 0) {
-            return PortalLink.separated(world, columns);
+            return PortalLink.separated(world, columns) && PortalLink.onePartner(world, columns);
         }
-        return PortalLink.exitInsideWall(world, columns);
+        return PortalLink.exitInsideWall(world, columns) && PortalLink.onePartner(world, columns);
     }
 
     /**

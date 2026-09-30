@@ -32,9 +32,15 @@ public final class OceanBoundaryHandler {
         int originX = chunk.xPosition << 4;
         int originZ = chunk.zPosition << 4;
         OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
+        if (!event.world.isRemote && OceanBoundaryMath.chunkReachesSnow(originX, originZ, settings)) {
+            OceanBoundary.sealFrozenChunk(chunk, event.world.getSeed());
+        }
         if (OceanBoundaryMath.chunkReachesSnow(originX, originZ, settings)
                 || OceanBoundaryMath.chunkReachesIcebergs(originX, originZ, settings)) {
             OceanBoundary.stripLooseSnow(chunk);
+        }
+        if (!event.world.isRemote && OceanBoundaryMath.chunkReachesPyramid(originX, originZ, settings)) {
+            OceanBoundary.refreshPyramids(chunk, event.world.getSeed());
         }
         if (!event.world.isRemote && !OceanBoundary.chunkIsInside(originX, originZ, settings)) {
             OceanBoundary.braceSeabed(chunk);
@@ -44,6 +50,9 @@ public final class OceanBoundaryHandler {
     @SubscribeEvent
     public void onWorldLoad(WorldEvent.Load event) {
         World world = event.world;
+        if (!world.isRemote && world.provider.dimensionId == 0) {
+            BetaClimate.setSeed(world.getSeed());
+        }
         if (!OceanBoundaryConfig.enabled || world.isRemote || world.provider.dimensionId != 0) {
             return;
         }

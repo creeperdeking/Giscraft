@@ -16,12 +16,20 @@ import net.minecraft.world.WorldServer;
 import net.minecraftforge.event.world.WorldEvent;
 
 /**
- * Links a nether portal to one overworld coordinate. Overworld columns eight
- * blocks apart land on neighbouring nether blocks, and a new overworld portal
- * closer than that is not allowed to light.
+ * Links a nether portal to one overworld column. The horizontal spot is fixed.
+ * A new overworld portal closer than 32 blocks to another is not allowed to
+ * light, so the nether frames cannot occupy the same blocks. A portal is also
+ * refused when it would share its exit with a portal that is already lit.
  */
 public final class PortalLink {
-    static final int SPACING = 8;
+    static final int SCALE = 8;
+    static final int SEPARATION = 32;
+    /**
+     * A lit portal can be 21 blocks wide, so it can sit in link cells three
+     * steps apart. Nether anchors closer than four blocks can therefore both
+     * arrive through that one overworld portal.
+     */
+    private static final int NETHER_GAP = 4;
 
     private static final Logger LOG = LogManager.getLogger("Giscraft");
     private static Field teleporterField;
@@ -42,25 +50,99 @@ public final class PortalLink {
             anchorX = Math.min(anchorX, columns[index]);
             anchorZ = Math.min(anchorZ, columns[index + 1]);
         }
-        int cellX = floorDiv(anchorX, SPACING) * SPACING;
-        int cellZ = floorDiv(anchorZ, SPACING) * SPACING;
-        int minX = Math.min(cellX, anchorX - (SPACING - 1));
-        int maxX = Math.max(cellX + SPACING - 1, anchorX + (SPACING - 1));
-        int minZ = Math.min(cellZ, anchorZ - (SPACING - 1));
-        int maxZ = Math.max(cellZ + SPACING - 1, anchorZ + (SPACING - 1));
+        int reach = SEPARATION - 1;
         int height = world.getActualHeight();
-        int limit = SPACING * SPACING;
-        for (int x = minX; x <= maxX; x++) {
-            for (int z = minZ; z <= maxZ; z++) {
-                boolean sameCell = x >= cellX && x < cellX + SPACING && z >= cellZ && z < cellZ + SPACING;
+        int limit = SEPARATION * SEPARATION;
+        for (int x = anchorX - reach; x <= anchorX + reach; x++) {
+            for (int z = anchorZ - reach; z <= anchorZ + reach; z++) {
                 int dx = x - anchorX;
                 int dz = z - anchorZ;
-                if (!sameCell && dx * dx + dz * dz >= limit) {
+                if (dx * dx + dz * dz >= limit) {
                     continue;
                 }
                 for (int y = 0; y < height; y++) {
                     if (world.getBlock(x, y, z) == Blocks.portal) {
                         return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    /**
+     * True when this unlit frame would be the only portal for its exit.
+     * Overworld frames that reach into a link cell which already holds a portal
+     * are refused. Nether anchors within {@link #NETHER_GAP} blocks of another
+     * anchor are refused, including another portal in the same column.
+     */
+    static boolean onePartner(World world, int[] columns) {
+        if (world.provider.dimensionId == -1) {
+            int[] origin = anchor(columns);
+            return netherAnchorsClear(world, origin[0], origin[1]);
+        }
+        return overworldCellsClear(world, columns);
+    }
+
+    private static int[] anchor(int[] columns) {
+        int x = columns[0];
+        int z = columns[1];
+        for (int index = 2; index < columns.length; index += 2) {
+            x = Math.min(x, columns[index]);
+            z = Math.min(z, columns[index + 1]);
+        }
+        return new int[] {x, z};
+    }
+
+    private static boolean netherAnchorsClear(World world, int x, int z) {
+        int reach = NETHER_GAP - 1;
+        int height = world.getActualHeight();
+        for (int dx = -reach; dx <= reach; dx++) {
+            for (int dz = -reach; dz <= reach; dz++) {
+                for (int y = 0; y < height; y++) {
+                    if (!portal(world, x + dx, y, z + dz)) {
+                        continue;
+                    }
+                    int[] at = corner(world, x + dx, y, z + dz);
+                    int apart = Math.max(Math.abs(at[0] - x), Math.abs(at[2] - z));
+                    if (apart < NETHER_GAP) {
+                        return false;
+                    }
+                }
+            }
+        }
+        return true;
+    }
+
+    private static boolean overworldCellsClear(World world, int[] columns) {
+        int seen = 0;
+        int[] seenX = new int[columns.length / 2];
+        int[] seenZ = new int[columns.length / 2];
+        int height = world.getActualHeight();
+        for (int index = 0; index < columns.length; index += 2) {
+            int cellX = floorDiv(columns[index], SCALE);
+            int cellZ = floorDiv(columns[index + 1], SCALE);
+            boolean repeat = false;
+            for (int prior = 0; prior < seen; prior++) {
+                if (seenX[prior] == cellX && seenZ[prior] == cellZ) {
+                    repeat = true;
+                    break;
+                }
+            }
+            if (repeat) {
+                continue;
+            }
+            seenX[seen] = cellX;
+            seenZ[seen] = cellZ;
+            seen++;
+            int originX = cellX * SCALE;
+            int originZ = cellZ * SCALE;
+            for (int x = originX; x < originX + SCALE; x++) {
+                for (int z = originZ; z < originZ + SCALE; z++) {
+                    for (int y = 0; y < height; y++) {
+                        if (portal(world, x, y, z)) {
+                            return false;
+                        }
                     }
                 }
             }
@@ -74,16 +156,22 @@ public final class PortalLink {
         }
         int anchorX = columns[0];
         int anchorZ = columns[1];
+        boolean alongX = false;
         for (int index = 2; index < columns.length; index += 2) {
             anchorX = Math.min(anchorX, columns[index]);
             anchorZ = Math.min(anchorZ, columns[index + 1]);
+            if (columns[index] != columns[0]) {
+                alongX = true;
+            }
         }
-        int overworldX = anchorX * SPACING;
-        int overworldZ = anchorZ * SPACING;
+        int overworldX = anchorX * SCALE;
+        int overworldZ = anchorZ * SCALE;
         long seed = nether.getSeed();
         OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
-        for (int dz = -1; dz <= 2; dz++) {
-            if (OceanBoundaryMath.intoWall(overworldX, overworldZ + dz, seed, settings) >= 0.0D) {
+        for (int along = -1; along <= 2; along++) {
+            int x = alongX ? overworldX + along : overworldX;
+            int z = alongX ? overworldZ : overworldZ + along;
+            if (OceanBoundaryMath.intoWall(x, z, seed, settings) >= 0.0D) {
                 return false;
             }
         }
@@ -98,18 +186,20 @@ public final class PortalLink {
         int x = MathHelper.floor_double(srcX);
         int y = MathHelper.floor_double(srcY);
         int z = MathHelper.floor_double(srcZ);
+        int alongX = 0;
         World source = entity.worldObj;
         if (source != null && source != destination && source.provider != null
                 && source.provider.dimensionId != dimension) {
             int[] corner = corner(source, x, y, z);
             x = corner[0];
             z = corner[2];
+            alongX = corner[3];
         }
         y = clamp(destination, y);
         if (dimension == -1) {
-            return new int[] {floorDiv(x, SPACING), y, floorDiv(z, SPACING)};
+            return new int[] {floorDiv(x, SCALE), y, floorDiv(z, SCALE), alongX};
         }
-        return new int[] {x * SPACING, y, z * SPACING};
+        return new int[] {x * SCALE, y, z * SCALE, alongX};
     }
 
     private static void install(WorldServer world) {
@@ -158,7 +248,7 @@ public final class PortalLink {
         if (!portal(world, x, y, z)) {
             int[] near = nearby(world, x, y, z);
             if (near == null) {
-                return new int[] {x, y, z};
+                return new int[] {x, y, z, 0};
             }
             x = near[0];
             y = near[1];
@@ -167,8 +257,9 @@ public final class PortalLink {
         while (y > 0 && portal(world, x, y - 1, z)) {
             y--;
         }
-        int[] at = move(world, x, y, z, -1, 0);
-        return move(world, at[0], at[1], at[2], 0, -1);
+        int alongX = portal(world, x + 1, y, z) || portal(world, x - 1, y, z) ? 1 : 0;
+        int[] at = alongX == 1 ? move(world, x, y, z, -1, 0) : move(world, x, y, z, 0, -1);
+        return new int[] {at[0], at[1], at[2], alongX};
     }
 
     private static int[] nearby(World world, int x, int y, int z) {

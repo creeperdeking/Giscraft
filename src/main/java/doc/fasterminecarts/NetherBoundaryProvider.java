@@ -9,14 +9,32 @@ import net.minecraft.world.ChunkPosition;
 import net.minecraft.world.World;
 import net.minecraft.world.chunk.Chunk;
 import net.minecraft.world.chunk.IChunkProvider;
+import net.minecraft.world.gen.ChunkProviderHell;
+import net.minecraft.world.gen.structure.MapGenNetherBridge;
 
-final class NetherBoundaryProvider implements IChunkProvider {
+/**
+ * Wraps the real nether generator so the bedrock wall can replace chunks past
+ * the radius. It still has to look like {@link ChunkProviderHell}: fortress
+ * spawns look the generator up by that class, then read the bridge field off
+ * the object they found, without searching a parent class.
+ */
+final class NetherBoundaryProvider extends ChunkProviderHell {
+    /**
+     * Same bridge the wrapped generator uses. The name is the one the spawner
+     * asks for at runtime.
+     */
+    public MapGenNetherBridge field_73172_c;
+
     private final IChunkProvider delegate;
     private final World world;
 
     NetherBoundaryProvider(IChunkProvider delegate, World world) {
+        super(world, world.getSeed());
         this.delegate = delegate;
         this.world = world;
+        if (delegate instanceof ChunkProviderHell) {
+            this.field_73172_c = ((ChunkProviderHell) delegate).genNetherBridge;
+        }
     }
 
     @Override

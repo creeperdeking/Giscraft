@@ -7,7 +7,8 @@ import owg.noise.NoiseOctavesBeta;
 import owg.noise.OldNoiseGeneratorOctaves2;
 
 /**
- * Samples Old World Gen's beta 1.7.3 surface using that mod's noise classes.
+ * Samples Old World Gen's beta 1.7.3 surface using that mod's noise classes,
+ * then applies the same continental and latitude shift as the running game.
  * Each result is the highest stone y and a biome group for one chunk column.
  */
 public final class BetaTerrainSampler {
@@ -62,7 +63,11 @@ public final class BetaTerrainSampler {
             for (int localZ = 0; localZ < 16; localZ++) {
                 int index = localX * 16 + localZ;
                 height[index] = tops[localZ * 16 + localX];
-                biome[index] = category((float) temperature[index], (float) humidity[index]);
+                int blockX = (chunkX << 4) + localX;
+                int blockZ = (chunkZ << 4) + localZ;
+                biome[index] = category(
+                        (float) BetaClimate.temperature(blockX, blockZ, temperature[index]),
+                        (float) BetaClimate.humidity(blockX, blockZ, humidity[index]));
             }
         }
     }
@@ -140,6 +145,9 @@ public final class BetaTerrainSampler {
                     scale = -scale * 0.3D;
                 }
                 scale = scale * 3.0D - 2.0D;
+                int worldX = (x + cellX) << 2;
+                int worldZ = (z + cellZ) << 2;
+                scale = BetaClimate.shapeDepth(worldX, worldZ, scale);
                 if (scale < 0.0D) {
                     scale /= 2.0D;
                     if (scale < -1.0D) {
@@ -160,6 +168,7 @@ public final class BetaTerrainSampler {
                 depth += 0.5D;
                 scale = scale * ySize / 16.0D;
                 double center = ySize / 2.0D + scale * 4.0D;
+                center = BetaClimate.shapeHeight(worldX, worldZ, center);
                 cellIndex++;
 
                 for (int cellY = 0; cellY < ySize; cellY++) {

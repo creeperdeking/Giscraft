@@ -58,6 +58,7 @@ final class OceanBoundaryProvider implements IChunkProvider {
         Chunk chunk = provider.provideChunk(x, z);
         OceanBoundary.stripOres(chunk, seed);
         OceanBoundary.finishEdge(chunk, seed);
+        OceanBoundary.sealSpilledLakes(chunk, seed);
     }
 
     @Override

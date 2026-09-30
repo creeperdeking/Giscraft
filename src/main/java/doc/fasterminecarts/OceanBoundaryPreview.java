@@ -27,7 +27,7 @@ import java.util.concurrent.atomic.AtomicReference;
 import javax.imageio.ImageIO;
 
 /**
- * Draws a beta terrain map with the ocean boundary applied.
+ * Draws the climate-shifted beta terrain map with the ocean boundary applied.
  * Snow is white, grassland light green, forest dark green, desert yellow.
  *
  * java -cp Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --seed 123 --out preview.png
@@ -57,7 +57,7 @@ public final class OceanBoundaryPreview {
             System.out.println("  --seaLevel --oceanFloor --oceanFloorVariation");
             System.out.println("  --coastlineAmplitude --coastlineScale --deepOceanStart");
             System.out.println("  --deepOceanFloor --deepOceanTransition");
-            System.out.println("  --iceWallGap --iceSnowLead --iceShelfLength --bedrockRun");
+            System.out.println("  --iceWallGap --iceSnowLead --icebergLead --iceShelfLength --bedrockRun");
             System.out.println("  --iceWallHeight --bedrockExtra --iceWaveAmplitude --iceHeightJitter");
             System.out.println("  --circular true|false --coastlineNoise true|false --useDeepOcean true|false");
             return;
@@ -150,6 +150,9 @@ public final class OceanBoundaryPreview {
 
         byte[] heights = new byte[count * 256];
         byte[] biomes = new byte[count * 256];
+        OceanBoundaryConfig.centerX = settings.centerX;
+        OceanBoundaryConfig.centerZ = settings.centerZ;
+        BetaClimate.setSeed(seed);
         sampleChunks(owgJar, seed, uniqueX, uniqueZ, count, heights, biomes, threads);
 
         int legend = 140;
@@ -320,7 +323,7 @@ public final class OceanBoundaryPreview {
         } else {
             base = 0xE2C84A;
         }
-        double shade = (height - 58) / 30.0D;
+        double shade = (height - 54) / 70.0D;
         if (shade < 0.0D) {
             shade = 0.0D;
         }
@@ -802,6 +805,7 @@ public final class OceanBoundaryPreview {
         settings.deepOceanTransition = 20;
         settings.iceWallGap = 1536;
         settings.iceSnowLead = 200;
+        settings.icebergLead = 600;
         settings.iceShelfLength = 256;
         settings.bedrockRun = 256;
         settings.iceWallHeight = 30;
@@ -835,6 +839,7 @@ public final class OceanBoundaryPreview {
         settings.deepOceanTransition = integerOption(args, "--deepOceanTransition", settings.deepOceanTransition);
         settings.iceWallGap = integerOption(args, "--iceWallGap", settings.iceWallGap);
         settings.iceSnowLead = integerOption(args, "--iceSnowLead", settings.iceSnowLead);
+        settings.icebergLead = integerOption(args, "--icebergLead", settings.icebergLead);
         settings.iceShelfLength = integerOption(args, "--iceShelfLength", settings.iceShelfLength);
         settings.bedrockRun = integerOption(args, "--bedrockRun", settings.bedrockRun);
         settings.iceWallHeight = integerOption(args, "--iceWallHeight", settings.iceWallHeight);
@@ -909,6 +914,7 @@ public final class OceanBoundaryPreview {
         settings.deepOceanTransition = configInt(values, "deepOceanTransition", settings.deepOceanTransition);
         settings.iceWallGap = configInt(values, "iceWallGap", settings.iceWallGap);
         settings.iceSnowLead = configInt(values, "iceSnowLead", settings.iceSnowLead);
+        settings.icebergLead = configInt(values, "icebergLead", settings.icebergLead);
         settings.iceShelfLength = configInt(values, "iceShelfLength", settings.iceShelfLength);
         settings.bedrockRun = configInt(values, "bedrockRun", settings.bedrockRun);
         settings.iceWallHeight = configInt(values, "iceWallHeight", settings.iceWallHeight);

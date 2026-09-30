@@ -22,6 +22,7 @@ final class OceanBoundaryConfig {
     static int deepOceanTransition = 20;
     static int iceWallGap = 1536;
     static int iceSnowLead = 200;
+    static int icebergLead = 600;
     static int iceShelfLength = 256;
     static int bedrockRun = 256;
     static int iceWallHeight = 30;
@@ -30,6 +31,13 @@ final class OceanBoundaryConfig {
     static int iceHeightJitter = 8;
     static boolean affectOres = true;
     static boolean debugLogging;
+    static int continentalDiameter = 10000;
+    static int betaEnd = 450;
+    static int continentEnd = 1500;
+    static int climateStart = 600;
+    static int climateEnd = 2600;
+    static int dryStart = 2000;
+    static int dryEnd = 3200;
 
     private OceanBoundaryConfig() {
     }
@@ -53,6 +61,7 @@ final class OceanBoundaryConfig {
         settings.deepOceanTransition = deepOceanTransition;
         settings.iceWallGap = iceWallGap;
         settings.iceSnowLead = iceSnowLead;
+        settings.icebergLead = icebergLead;
         settings.iceShelfLength = iceShelfLength;
         settings.bedrockRun = bedrockRun;
         settings.iceWallHeight = iceWallHeight;
@@ -125,6 +134,9 @@ final class OceanBoundaryConfig {
         iceSnowLead = config.getInt(
                 "iceSnowLead", category, 200, 0, 30000000,
                 "Blocks of snowy frozen ocean before the ice wall.");
+        icebergLead = config.getInt(
+                "icebergLead", category, 600, 0, 30000000,
+                "Blocks before the ice wall where icebergs generate. Past the snowy plain this is open ocean.");
         iceShelfLength = config.getInt(
                 "iceShelfLength", category, 256, 1, 30000000,
                 "Blocks of ice with rising bedrock behind the wall.");

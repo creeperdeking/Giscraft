@@ -19,6 +19,7 @@ final class OceanBoundaryMath {
         int deepOceanTransition;
         int iceWallGap;
         int iceSnowLead;
+        int icebergLead;
         int iceShelfLength;
         int bedrockRun;
         int iceWallHeight;
@@ -33,8 +34,12 @@ final class OceanBoundaryMath {
     static final int BAND_BEDROCK = 3;
     static final int BAND_VOID = 4;
 
-    private static final int ICEBERG_LEAD = 400;
+    private static final int BERG_BUCKET = 32;
+    private static final int BERG_DARTS = 4;
     private static final int PYRAMID_RISE = 50;
+    static final int PYRAMID_VENEER = 2;
+    static final int PYRAMID_LINING = 1;
+    static final int PYRAMID_UNDERWATER = 20;
 
     private OceanBoundaryMath() {
     }
@@ -140,15 +145,15 @@ final class OceanBoundaryMath {
 
     static int icebergHeight(int x, int z, long seed, Settings settings) {
         double into = intoWall(x, z, seed, settings);
-        if (into >= 0.0D || into < -settings.iceSnowLead - ICEBERG_LEAD - 24.0D) {
+        if (into >= 0.0D || into < -settings.icebergLead - 24.0D) {
             return 0;
         }
-        int height = bergGrid(x, z, seed, settings, 26, 0x1000, 3, 8, 2, 4, 0.16D, 0);
-        int medium = bergGrid(x, z, seed, settings, 60, 0x2000, 7, 18, 4, 8, 0.09D, 1);
+        int height = bergScatter(x, z, seed, settings, 26, 0x1000, 3, 8, 2, 4, 0.16D, 0);
+        int medium = bergScatter(x, z, seed, settings, 60, 0x2000, 7, 18, 4, 8, 0.09D, 1);
         if (medium > height) {
             height = medium;
         }
-        int large = bergGrid(x, z, seed, settings, 98, 0x3000, 28, 60, 14, 30, 0.09D, 2);
+        int large = bergScatter(x, z, seed, settings, 98, 0x3000, 28, 60, 14, 30, 0.09D, 2);
         if (large > height) {
             height = large;
         }
@@ -175,6 +180,50 @@ final class OceanBoundaryMath {
             }
         }
         return best;
+    }
+
+    static int pyramidPeakY(Settings settings) {
+        return pyramidPeak(settings);
+    }
+
+    static int pyramidFloorY(Settings settings) {
+        int floor = settings.seaLevel - PYRAMID_UNDERWATER;
+        if (floor < 2) {
+            return 2;
+        }
+        return floor;
+    }
+
+    static int pyramidIndexAt(int x, int z, Settings settings) {
+        if (!settings.useDeepOcean) {
+            return -1;
+        }
+        int peak = pyramidPeak(settings);
+        int radius = pyramidRadius(settings);
+        int bestIndex = -1;
+        int bestTop = -1;
+        for (int index = 0; index < 4; index++) {
+            int span = Math.max(
+                    Math.abs(x - pyramidCenterX(index, settings)),
+                    Math.abs(z - pyramidCenterZ(index, settings)));
+            if (span > radius) {
+                continue;
+            }
+            int top = peak - span;
+            if (top > bestTop) {
+                bestTop = top;
+                bestIndex = index;
+            }
+        }
+        return bestIndex;
+    }
+
+    static int pyramidCenterXAt(int index, Settings settings) {
+        return pyramidCenterX(index, settings);
+    }
+
+    static int pyramidCenterZAt(int index, Settings settings) {
+        return pyramidCenterZ(index, settings);
     }
 
     static boolean chunkReachesPyramid(int originX, int originZ, Settings settings) {
@@ -224,7 +273,7 @@ final class OceanBoundaryMath {
         int outer = inner + settings.iceWallGap;
         int mid = inner + (outer - inner) / 2;
         int radius = pyramidRadius(settings);
-        int earliestIce = outer - settings.iceWaveAmplitude - settings.iceSnowLead - ICEBERG_LEAD;
+        int earliestIce = outer - settings.iceWaveAmplitude - settings.icebergLead;
         if (mid + radius > earliestIce - 24) {
             mid = earliestIce - 24 - radius;
         }
@@ -477,7 +526,7 @@ final class OceanBoundaryMath {
         if (into >= 0.0D) {
             return 0.0D;
         }
-        double far = -settings.iceSnowLead - ICEBERG_LEAD;
+        double far = -settings.icebergLead;
         if (into < far) {
             return 0.0D;
         }
@@ -490,10 +539,10 @@ final class OceanBoundaryMath {
         if (melt <= 0) {
             chance = rate * 5.0D * close * close * close;
         } else if (melt == 1) {
-            chance = rate * (0.08D + 0.92D * close * close);
+            chance = rate * (0.08D + 3.5D * close * close);
         } else {
             double fringe = close < 0.12D ? close / 0.12D : 1.0D;
-            chance = rate * (0.90D + 0.10D * close) * fringe;
+            chance = rate * (1.0D + 3.0D * close * close) * fringe;
         }
         if (chance > 0.92D) {
             return 0.92D;
@@ -504,12 +553,12 @@ final class OceanBoundaryMath {
         return chance;
     }
 
-    private static int bergGrid(
+    private static int bergScatter(
             int x,
             int z,
             long seed,
             Settings settings,
-            int cell,
+            int spacing,
             int salt,
             int minHeight,
             int maxHeight,
@@ -517,17 +566,19 @@ final class OceanBoundaryMath {
             int maxRadius,
             double rate,
             int melt) {
-        int cellX = Math.floorDiv(x, cell);
-        int cellZ = Math.floorDiv(z, cell);
+        int reach = (int) Math.ceil(maxRadius * 1.2D);
+        int range = (reach + BERG_BUCKET - 1) / BERG_BUCKET;
+        int cellX = Math.floorDiv(x, BERG_BUCKET);
+        int cellZ = Math.floorDiv(z, BERG_BUCKET);
         int best = 0;
-        for (int offsetX = -1; offsetX <= 1; offsetX++) {
-            for (int offsetZ = -1; offsetZ <= 1; offsetZ++) {
-                int height = bergCell(
+        for (int offsetX = -range; offsetX <= range; offsetX++) {
+            for (int offsetZ = -range; offsetZ <= range; offsetZ++) {
+                int height = bergBucket(
                         x,
                         z,
                         seed,
                         settings,
-                        cell,
+                        spacing,
                         salt,
                         minHeight,
                         maxHeight,
@@ -545,12 +596,12 @@ final class OceanBoundaryMath {
         return best;
     }
 
-    private static int bergCell(
+    private static int bergBucket(
             int x,
             int z,
             long seed,
             Settings settings,
-            int cell,
+            int spacing,
             int salt,
             int minHeight,
             int maxHeight,
@@ -561,39 +612,105 @@ final class OceanBoundaryMath {
             int cellX,
             int cellZ) {
         long cellSeed = seed ^ (salt * 0x9E3779B97L);
-        double jitterX = 0.12D + unit(cellX, cellZ, cellSeed ^ 0x11L) * 0.76D;
-        double jitterZ = 0.12D + unit(cellX, cellZ, cellSeed ^ 0x22L) * 0.76D;
-        int centerX = (int) Math.round(cellX * (double) cell + jitterX * cell);
-        int centerZ = (int) Math.round(cellZ * (double) cell + jitterZ * cell);
-        double chance = bergChance(intoWall(centerX, centerZ, seed, settings), settings, rate, melt);
-        if (chance <= 0.0D || unit(cellX, cellZ, cellSeed) > chance) {
+        double areaRatio = (BERG_BUCKET * (double) BERG_BUCKET) / (spacing * (double) spacing);
+        int slots = (int) Math.ceil(0.92D * areaRatio);
+        if (slots < 1) {
+            slots = 1;
+        }
+        if (slots > 4) {
+            slots = 4;
+        }
+        int best = 0;
+        for (int slot = 0; slot < slots; slot++) {
+            long slotSeed = cellSeed ^ (0x9E3779B97L * (slot + 1));
+            double widthRoll = unit(cellX, cellZ, slotSeed ^ 0x44L);
+            double radius = minRadius + widthRoll * (maxRadius - minRadius);
+            double clearance = melt >= 2 ? radius * 1.2D : 0.0D;
+            int centerX = 0;
+            int centerZ = 0;
+            double chance = 0.0D;
+            boolean placed = false;
+            for (int dart = 0; dart < BERG_DARTS; dart++) {
+                long dartSeed = slotSeed ^ (0xBF58476D1CEL * (dart + 1));
+                int localX = bucketLocal(unit(cellX, cellZ, dartSeed ^ 0x11L));
+                int localZ = bucketLocal(unit(cellX, cellZ, dartSeed ^ 0x22L));
+                int cx = cellX * BERG_BUCKET + localX;
+                int cz = cellZ * BERG_BUCKET + localZ;
+                double into = intoWall(cx, cz, seed, settings);
+                if (into > -clearance) {
+                    continue;
+                }
+                double roll = bergChance(into, settings, rate, melt);
+                if (roll <= 0.0D) {
+                    continue;
+                }
+                centerX = cx;
+                centerZ = cz;
+                chance = roll;
+                placed = true;
+                break;
+            }
+            if (!placed) {
+                continue;
+            }
+            double odds = chance * areaRatio / slots;
+            if (odds > 1.0D) {
+                odds = 1.0D;
+            }
+            if (unit(cellX, cellZ, slotSeed) > odds) {
+                continue;
+            }
+            int height = bergShape(x, z, centerX, centerZ, slotSeed, minHeight, maxHeight, radius);
+            if (height > best) {
+                best = height;
+            }
+        }
+        return best;
+    }
+
+    private static int bucketLocal(double unitValue) {
+        int local = (int) Math.floor(unitValue * BERG_BUCKET);
+        if (local >= BERG_BUCKET) {
+            return BERG_BUCKET - 1;
+        }
+        if (local < 0) {
             return 0;
         }
-        double size = unit(cellX, cellZ, cellSeed ^ 0x33L);
-        double widthRoll = unit(cellX, cellZ, cellSeed ^ 0x44L);
+        return local;
+    }
+
+    private static int bergShape(
+            int x,
+            int z,
+            int centerX,
+            int centerZ,
+            long bergSeed,
+            int minHeight,
+            int maxHeight,
+            double radius) {
+        double size = unit(centerX, centerZ, bergSeed ^ 0x33L);
         int peak = minHeight + (int) Math.round(size * (maxHeight - minHeight));
-        double radius = minRadius + widthRoll * (maxRadius - minRadius);
         double dx = x - centerX;
         double dz = z - centerZ;
         double angle = Math.atan2(dz, dx);
-        double limit = bergLimit(angle, radius, cellX, cellZ, cellSeed);
+        double limit = bergLimit(angle, radius, centerX, centerZ, bergSeed);
         if (dx * dx + dz * dz >= limit * limit) {
             return 0;
         }
-        double shiftAngle = (unit(cellX, cellZ, cellSeed ^ 0x99L) * 2.0D - 1.0D) * Math.PI;
-        double tipReach = bergLimit(shiftAngle, radius, cellX, cellZ, cellSeed);
-        double shift = tipReach * (0.28D + 0.24D * unit(cellX, cellZ, cellSeed ^ 0x88L));
+        double shiftAngle = (unit(centerX, centerZ, bergSeed ^ 0x99L) * 2.0D - 1.0D) * Math.PI;
+        double tipReach = bergLimit(shiftAngle, radius, centerX, centerZ, bergSeed);
+        double shift = tipReach * (0.28D + 0.24D * unit(centerX, centerZ, bergSeed ^ 0x88L));
         double peakX = centerX + Math.cos(shiftAngle) * shift;
         double peakZ = centerZ + Math.sin(shiftAngle) * shift;
         double peakDist = Math.hypot(x - peakX, z - peakZ);
         if (peakDist >= limit) {
             return 0;
         }
-        double point = 1.7D + unit(cellX, cellZ, cellSeed ^ 0xABCL) * 1.3D;
+        double point = 1.7D + unit(centerX, centerZ, bergSeed ^ 0xABCL) * 1.3D;
         double profile = Math.pow(1.0D - peakDist / limit, point);
         double across = Math.abs(Math.sin(angle - shiftAngle));
         profile *= 1.0D - 0.58D * Math.pow(across, 0.5D);
-        double gouge = linearNoise(x * 0.72D, z * 0.72D, cellSeed ^ 0x66L);
+        double gouge = linearNoise(x * 0.72D, z * 0.72D, bergSeed ^ 0x66L);
         if (gouge < -0.15D) {
             double cut = (-gouge - 0.15D) / 0.85D;
             if (cut > 1.0D) {
@@ -602,7 +719,7 @@ final class OceanBoundaryMath {
             profile *= 1.0D - 0.72D * cut;
         }
         int height = (int) Math.round(peak * profile);
-        height += (int) Math.round(linearNoise(x * 0.95D, z * 0.95D, cellSeed ^ 0xB7L) * 2.6D);
+        height += (int) Math.round(linearNoise(x * 0.95D, z * 0.95D, bergSeed ^ 0xB7L) * 2.6D);
         if (height > peak) {
             height = peak;
         }
@@ -627,7 +744,7 @@ final class OceanBoundaryMath {
 
     private static double icebergNear(Settings settings) {
         return deepEdge(settings) + settings.iceWallGap - settings.iceWaveAmplitude
-                - settings.iceSnowLead - ICEBERG_LEAD;
+                - settings.icebergLead;
     }
 
     private static double unit(int x, int z, long seed) {
@@ -738,6 +855,10 @@ final class OceanBoundaryMath {
 
     private static double snowFar(Settings settings) {
         return deepEdge(settings) + settings.iceWallGap + settings.iceWaveAmplitude - settings.iceSnowLead;
+    }
+
+    static double blocksPastVoid(double x, double z, Settings settings) {
+        return distance(x, z, settings.centerX, settings.centerZ, settings.circular) - voidFar(settings);
     }
 
     private static double voidFar(Settings settings) {

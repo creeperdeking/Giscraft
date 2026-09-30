@@ -43,6 +43,7 @@ public final class Giscraft {
         ChestShape.setFullCubeBounds(Blocks.trapped_chest);
         MinecraftForge.EVENT_BUS.register(new ExperienceHandler());
         MinecraftForge.EVENT_BUS.register(new FishingHandler());
+        MinecraftForge.EVENT_BUS.register(new ZombieHandler());
         MinecraftForge.EVENT_BUS.register(new LeafDropHandler());
         MinecraftForge.EVENT_BUS.register(new LogHarvestHandler());
         MinecraftForge.EVENT_BUS.register(new PigSpeedHandler());
@@ -50,6 +51,7 @@ public final class Giscraft {
         MinecraftForge.EVENT_BUS.register(goldenTools);
         FMLCommonHandler.instance().bus().register(goldenTools);
         FMLCommonHandler.instance().bus().register(new SprintHandler());
+        FMLCommonHandler.instance().bus().register(new WorldEdge());
         MinecraftForge.EVENT_BUS.register(new OceanBoundaryHandler());
         MinecraftForge.EVENT_BUS.register(new NetherBoundaryHandler());
         MinecraftForge.EVENT_BUS.register(new PortalLink());

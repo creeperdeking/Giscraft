@@ -34,6 +34,10 @@ final class NetherBoundary {
         return closest(chunkX, chunkZ) >= radius() + THICKNESS;
     }
 
+    static boolean outsideBedrock(double x, double z) {
+        return distance(x, z) >= radius() + THICKNESS;
+    }
+
     static Chunk voidChunk(World world, int chunkX, int chunkZ) {
         Chunk chunk = new Chunk(world, chunkX, chunkZ);
         byte[] biomes = chunk.getBiomeArray();

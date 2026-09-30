@@ -29,7 +29,6 @@ public final class OuterLife {
         Chunk chunk = event.getChunk();
         LifeData data = LifeData.get(world);
         long key = LifeData.key(chunk.xPosition, chunk.zPosition);
-        replacePumpkinSnowmen(world, chunk);
         cullSquids(chunk);
         if (data.seeded(key)) {
             return;
@@ -207,38 +206,6 @@ public final class OuterLife {
                     continue;
                 }
                 squid.setDead();
-            }
-        }
-    }
-
-    private static void replacePumpkinSnowmen(World world, Chunk chunk) {
-        OceanBoundaryMath.Settings settings = OceanBoundaryConfig.settings();
-        long seed = world.getSeed();
-        List[] lists = chunk.entityLists;
-        for (int section = 0; section < lists.length; section++) {
-            if (lists[section] == null || lists[section].isEmpty()) {
-                continue;
-            }
-            Object[] copy = lists[section].toArray();
-            for (int index = 0; index < copy.length; index++) {
-                if (copy[index].getClass() != EntitySnowman.class) {
-                    continue;
-                }
-                EntitySnowman snowman = (EntitySnowman) copy[index];
-                int blockX = net.minecraft.util.MathHelper.floor_double(snowman.posX);
-                int blockZ = net.minecraft.util.MathHelper.floor_double(snowman.posZ);
-                if (OceanBoundaryMath.bandAt(blockX, blockZ, seed, settings) != OceanBoundaryMath.BAND_ICE) {
-                    continue;
-                }
-                EntityBareSnowman bare = new EntityBareSnowman(world);
-                bare.setLocationAndAngles(
-                        snowman.posX,
-                        snowman.posY,
-                        snowman.posZ,
-                        snowman.rotationYaw,
-                        snowman.rotationPitch);
-                snowman.setDead();
-                world.spawnEntityInWorld(bare);
             }
         }
     }

@@ -51,11 +51,15 @@ public final class GiscraftTransformer implements IClassTransformer {
     private static final String TARGET_OLD_SUGAR_CANE_GEN = "owg.deco.OldGenReed";
     private static final String TARGET_OLD_CACTUS_GEN = "owg.deco.OldGenCactus";
     private static final String TARGET_BETA_GENERATOR = "owg.generator.ChunkGeneratorBeta";
+    private static final String TARGET_BETA_CLIMATE = "owg.world.ManagerOWG";
     private static final String TARGET_FORGE_HOOKS = "net.minecraftforge.common.ForgeHooks";
     private static final String TARGET_DYNAMIC_LIGHTS =
             "com.gtnewhorizons.angelica.dynamiclights.DynamicLights";
     private static final String TARGET_PORTAL = "net.minecraft.block.BlockPortal";
     private static final String PORTAL_LIGHT_DESC = "(Lnet/minecraft/world/World;III)Z";
+    private static final String TARGET_SKULL = "net.minecraft.block.BlockSkull";
+    private static final String WITHER_PATTERN_DESC =
+            "(Lnet/minecraft/world/World;IIILnet/minecraft/tileentity/TileEntitySkull;)V";
     private static final String HARVEST_CHECK_DESC =
             "(Lnet/minecraft/block/Block;Lnet/minecraft/entity/player/EntityPlayer;I)Z";
     private static final String CHEST_BOUNDS_DESC =
@@ -99,7 +103,11 @@ public final class GiscraftTransformer implements IClassTransformer {
         }
 
         if (TARGET_BETA_GENERATOR.equals(transformedName) || TARGET_BETA_GENERATOR.equals(name)) {
-            return transformBetaOres(basicClass);
+            return transformBetaIce(transformBetaShape(transformBetaOres(basicClass)));
+        }
+
+        if (TARGET_BETA_CLIMATE.equals(transformedName) || TARGET_BETA_CLIMATE.equals(name)) {
+            return transformBetaClimate(basicClass);
         }
 
         if (TARGET_FORGE_HOOKS.equals(transformedName)) {
@@ -136,6 +144,10 @@ public final class GiscraftTransformer implements IClassTransformer {
 
         if (TARGET_PORTAL.equals(transformedName)) {
             return transformNetherPortal(basicClass);
+        }
+
+        if (TARGET_SKULL.equals(transformedName)) {
+            return transformWitherPattern(basicClass);
         }
 
         if (isFullGrownPlant(name) || isFullGrownPlant(transformedName)) {
@@ -571,6 +583,267 @@ public final class GiscraftTransformer implements IClassTransformer {
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
         classNode.accept(writer);
         return writer.toByteArray();
+    }
+
+    private static byte[] transformBetaShape(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+        MethodNode noise = findMethod(classNode, "func_4061_a");
+        if (noise == null) {
+            throw new RuntimeException("Giscraft could not find beta terrain noise.");
+        }
+        AbstractInsnNode depthStore = findDepthStore(noise);
+        AbstractInsnNode heightStore = findHeightStore(noise);
+        if (depthStore == null || heightStore == null) {
+            throw new RuntimeException("Giscraft could not reshape beta terrain.");
+        }
+        noise.instructions.insert(depthStore, sampleCall("shapeDepth"));
+        noise.instructions.insert(heightStore, sampleCall("shapeHeight"));
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformBetaIce(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+        MethodNode terrain = findMethod(classNode, "generateTerrain");
+        AbstractInsnNode store = terrain == null ? null : findIceTemperatureStore(terrain);
+        if (store == null) {
+            throw new RuntimeException("Giscraft could not retarget beta ice.");
+        }
+        terrain.instructions.insert(store, iceTemperature());
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static AbstractInsnNode findIceTemperatureStore(MethodNode method) {
+        for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (!isStore(insn, Opcodes.DSTORE, 53) || previousReal(insn) == null) {
+                continue;
+            }
+            if (previousReal(insn).getOpcode() != Opcodes.DALOAD) {
+                continue;
+            }
+            return insn;
+        }
+        return null;
+    }
+
+    private static InsnList iceTemperature() {
+        InsnList call = new InsnList();
+        call.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        call.add(new IntInsnNode(Opcodes.BIPUSH, 16));
+        call.add(new InsnNode(Opcodes.IMUL));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 11));
+        call.add(new InsnNode(Opcodes.ICONST_2));
+        call.add(new InsnNode(Opcodes.ISHL));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 43));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        call.add(new IntInsnNode(Opcodes.BIPUSH, 16));
+        call.add(new InsnNode(Opcodes.IMUL));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 12));
+        call.add(new InsnNode(Opcodes.ICONST_2));
+        call.add(new InsnNode(Opcodes.ISHL));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 52));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.DLOAD, 53));
+        call.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                "doc/fasterminecarts/BetaClimate",
+                "temperature",
+                "(IID)D",
+                false));
+        call.add(new VarInsnNode(Opcodes.DSTORE, 53));
+        return call;
+    }
+
+    private static byte[] transformBetaClimate(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+        MethodNode biomes = findMethod(classNode, "getBiomesGens");
+        MethodNode snow = findMethod(classNode, "getColdTemperatures");
+        if (biomes == null || snow == null || !redirectBiomeLookup(biomes) || !redirectSnowTemperature(snow)) {
+            throw new RuntimeException("Giscraft could not shift beta climate.");
+        }
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static InsnList sampleCall(String method) {
+        InsnList call = new InsnList();
+        call.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 17));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new InsnNode(Opcodes.ICONST_2));
+        call.add(new InsnNode(Opcodes.ISHL));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 4));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 19));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new InsnNode(Opcodes.ICONST_2));
+        call.add(new InsnNode(Opcodes.ISHL));
+        call.add(new VarInsnNode(Opcodes.DLOAD, "shapeDepth".equals(method) ? 29 : 31));
+        call.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                "doc/fasterminecarts/BetaClimate",
+                method,
+                "(IID)D",
+                false));
+        call.add(new VarInsnNode(Opcodes.DSTORE, "shapeDepth".equals(method) ? 29 : 31));
+        return call;
+    }
+
+    private static AbstractInsnNode findDepthStore(MethodNode method) {
+        for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (!isStore(insn, Opcodes.DSTORE, 29)) {
+                continue;
+            }
+            AbstractInsnNode sub = previousReal(insn);
+            AbstractInsnNode two = previousReal(sub);
+            AbstractInsnNode mul = previousReal(two);
+            AbstractInsnNode three = previousReal(mul);
+            AbstractInsnNode load = previousReal(three);
+            if (sub != null
+                    && sub.getOpcode() == Opcodes.DSUB
+                    && isDouble(two, 2.0D)
+                    && mul != null
+                    && mul.getOpcode() == Opcodes.DMUL
+                    && isDouble(three, 3.0D)
+                    && isLoad(load, Opcodes.DLOAD, 29)) {
+                return insn;
+            }
+        }
+        return null;
+    }
+
+    private static AbstractInsnNode findHeightStore(MethodNode method) {
+        for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (!isStore(insn, Opcodes.DSTORE, 31)) {
+                continue;
+            }
+            AbstractInsnNode add = previousReal(insn);
+            AbstractInsnNode mul = previousReal(add);
+            AbstractInsnNode four = previousReal(mul);
+            if (add != null
+                    && add.getOpcode() == Opcodes.DADD
+                    && mul != null
+                    && mul.getOpcode() == Opcodes.DMUL
+                    && isDouble(four, 4.0D)) {
+                return insn;
+            }
+        }
+        return null;
+    }
+
+    private static boolean redirectBiomeLookup(MethodNode method) {
+        for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (!(insn instanceof MethodInsnNode)) {
+                continue;
+            }
+            MethodInsnNode call = (MethodInsnNode) insn;
+            if (call.getOpcode() != Opcodes.INVOKESTATIC || !"getBiomeFromLookup".equals(call.name)) {
+                continue;
+            }
+            AbstractInsnNode humid = previousReal(call);
+            AbstractInsnNode temp = previousReal(humid);
+            if (!isLoad(humid, Opcodes.DLOAD, 16) || !isLoad(temp, Opcodes.DLOAD, 14)) {
+                continue;
+            }
+            method.instructions.insertBefore(temp, climatePair(14, "temperature"));
+            method.instructions.remove(temp);
+            method.instructions.insertBefore(humid, climatePair(16, "humidity"));
+            method.instructions.remove(humid);
+            return true;
+        }
+        return false;
+    }
+
+    private static boolean redirectSnowTemperature(MethodNode method) {
+        for (AbstractInsnNode insn = method.instructions.getFirst(); insn != null; insn = insn.getNext()) {
+            if (insn.getOpcode() != Opcodes.DASTORE) {
+                continue;
+            }
+            AbstractInsnNode value = previousReal(insn);
+            AbstractInsnNode index = previousReal(value);
+            AbstractInsnNode array = previousReal(index);
+            if (!isLoad(value, Opcodes.DLOAD, 14)
+                    || !isLoad(index, Opcodes.ILOAD, 5)
+                    || array == null
+                    || array.getOpcode() != Opcodes.ALOAD
+                    || ((VarInsnNode) array).var != 0) {
+                continue;
+            }
+            method.instructions.insertBefore(value, climatePairSnow());
+            method.instructions.remove(value);
+            return true;
+        }
+        return false;
+    }
+
+    private static InsnList climatePair(int valueLocal, String method) {
+        InsnList call = new InsnList();
+        call.add(new VarInsnNode(Opcodes.ILOAD, 0));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 6));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 7));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.DLOAD, valueLocal));
+        call.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                "doc/fasterminecarts/BetaClimate",
+                method,
+                "(IID)D",
+                false));
+        return call;
+    }
+
+    private static InsnList climatePairSnow() {
+        InsnList call = new InsnList();
+        call.add(new VarInsnNode(Opcodes.ILOAD, 1));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 6));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 2));
+        call.add(new VarInsnNode(Opcodes.ILOAD, 7));
+        call.add(new InsnNode(Opcodes.IADD));
+        call.add(new VarInsnNode(Opcodes.DLOAD, 14));
+        call.add(new MethodInsnNode(
+                Opcodes.INVOKESTATIC,
+                "doc/fasterminecarts/BetaClimate",
+                "temperature",
+                "(IID)D",
+                false));
+        return call;
+    }
+
+    private static MethodNode findMethod(ClassNode classNode, String name) {
+        for (MethodNode method : classNode.methods) {
+            if (name.equals(method.name)) {
+                return method;
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLoad(AbstractInsnNode insn, int opcode, int variable) {
+        return insn instanceof VarInsnNode
+                && insn.getOpcode() == opcode
+                && ((VarInsnNode) insn).var == variable;
+    }
+
+    private static boolean isStore(AbstractInsnNode insn, int opcode, int variable) {
+        return isLoad(insn, opcode, variable);
+    }
+
+    private static boolean isDouble(AbstractInsnNode insn, double value) {
+        return insn instanceof LdcInsnNode
+                && ((LdcInsnNode) insn).cst instanceof Double
+                && ((Double) ((LdcInsnNode) insn).cst).doubleValue() == value;
     }
 
     private static boolean loopCountsVanillaOre(MethodNode method, JumpInsnNode jump) {
@@ -1425,6 +1698,42 @@ public final class GiscraftTransformer implements IClassTransformer {
         if (!patched) {
             throw new RuntimeException(
                     "Giscraft could not guard nether portal lighting.");
+        }
+
+        ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);
+        classNode.accept(writer);
+        return writer.toByteArray();
+    }
+
+    private static byte[] transformWitherPattern(byte[] basicClass) {
+        ClassNode classNode = new ClassNode();
+        new ClassReader(basicClass).accept(classNode, 0);
+
+        boolean patched = false;
+
+        for (MethodNode method : classNode.methods) {
+            if (!"func_149965_a".equals(method.name) || !WITHER_PATTERN_DESC.equals(method.desc)) {
+                continue;
+            }
+            InsnList call = new InsnList();
+            call.add(new VarInsnNode(Opcodes.ALOAD, 1));
+            call.add(new VarInsnNode(Opcodes.ILOAD, 2));
+            call.add(new VarInsnNode(Opcodes.ILOAD, 3));
+            call.add(new VarInsnNode(Opcodes.ILOAD, 4));
+            call.add(new MethodInsnNode(
+                    Opcodes.INVOKESTATIC,
+                    "doc/fasterminecarts/PyramidWither",
+                    "trySummon",
+                    "(Lnet/minecraft/world/World;III)V",
+                    false));
+            call.add(new InsnNode(Opcodes.RETURN));
+            method.instructions.insert(call);
+            patched = true;
+        }
+
+        if (!patched) {
+            throw new RuntimeException(
+                    "Giscraft could not disable the wither summon pattern.");
         }
 
         ClassWriter writer = new ClassWriter(ClassWriter.COMPUTE_MAXS);

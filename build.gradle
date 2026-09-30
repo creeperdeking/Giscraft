@@ -36,10 +36,10 @@ task compileNoiseStub(type: JavaCompile) {
 }
 
 task compileTerrainPreview(type: JavaCompile) {
-    dependsOn compileNoiseStub
+    dependsOn compileNoiseStub, classes
     onlyIf { owgJar.isFile() }
     source = fileTree(dir: 'preview-src', include: 'doc/**/*.java')
-    classpath = files("$buildDir/noise-stub", owgJar)
+    classpath = files(sourceSets.main.output, "$buildDir/noise-stub", owgJar)
     destinationDir = file("$buildDir/terrain-preview")
     sourceCompatibility = '1.8'
     targetCompatibility = '1.8'
