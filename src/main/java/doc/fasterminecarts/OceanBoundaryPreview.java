@@ -53,12 +53,17 @@ public final class OceanBoundaryPreview {
             System.out.println("  --owg <jar>            NostalgiaGenerator jar. Default: the 1.7.10 instance mods folder.");
             System.out.println("  --zone                 Draw only the ocean zones, without beta terrain.");
             System.out.println("  --threads <n>          Terrain sampling threads. Default: all processors.");
-            System.out.println("  --centerX --centerZ --transitionStart --fullOceanRadius");
+            System.out.println("  --centerX --centerZ");
+            System.out.println("  --landRadius --coastFade --shallowOcean --deepOcean --iceBeyond --flowerBiome");
+            System.out.println("    Each width is added onto the ring inside it. landRadius is where the continent is still whole.");
+            System.out.println("  --frozenLead --icebergLead --pyramidInset");
+            System.out.println("    Distances inward from the ice wall.");
+            System.out.println("  --betaEnd --continentEnd --climateStart --climateEnd --dryStart --dryEnd");
+            System.out.println("    Percents of the coastline. 100 is where the continent has faded to sea.");
+            System.out.println("  --centralSea --riverWidth");
             System.out.println("  --seaLevel --oceanFloor --oceanFloorVariation");
-            System.out.println("  --coastlineAmplitude --coastlineScale --deepOceanStart");
-            System.out.println("  --deepOceanFloor --deepOceanTransition");
-            System.out.println("  --iceWallGap --iceSnowLead --icebergLead --iceShelfLength --bedrockRun");
-            System.out.println("  --iceWallHeight --bedrockExtra --iceWaveAmplitude --iceHeightJitter");
+            System.out.println("  --coastlineAmplitude --coastlineScale --deepSlope");
+            System.out.println("  --deepOceanFloor --iceWallHeight --bedrockExtra --iceWaveAmplitude --iceHeightJitter");
             System.out.println("  --circular true|false --coastlineNoise true|false --useDeepOcean true|false");
             return;
         }
@@ -73,13 +78,35 @@ public final class OceanBoundaryPreview {
             throw new IOException("Missing config " + configFile.getAbsolutePath());
         }
         applyOverrides(settings, args);
+        OceanBoundaryConfig.resolveRings(
+                OceanBoundaryConfig.landRadius,
+                OceanBoundaryConfig.coastFade,
+                OceanBoundaryConfig.shallowOcean,
+                OceanBoundaryConfig.deepOcean,
+                OceanBoundaryConfig.iceBeyond,
+                OceanBoundaryConfig.flowerBiome,
+                OceanBoundaryConfig.frozenLead,
+                OceanBoundaryConfig.icebergReach,
+                OceanBoundaryConfig.pyramidInset);
+        OceanBoundaryConfig.copyBoundary(settings);
+        ZoneScale.resolve(settings.fullOceanRadius);
         System.out.println(
                 (settings.circular ? "Circle" : "Square")
                         + "  land " + settings.transitionStart
-                        + "  ocean " + settings.fullOceanRadius
-                        + "  deep " + settings.deepOceanStart
-                        + "  ice " + (OceanBoundaryMath.deepEdge(settings) + settings.iceWallGap)
+                        + "  fade +" + OceanBoundaryConfig.coastFade
+                        + "  shallow +" + OceanBoundaryConfig.shallowOcean
+                        + "  deep +" + OceanBoundaryConfig.deepOcean
+                        + "  ice +" + OceanBoundaryConfig.iceBeyond
+                        + "  flowers +" + OceanBoundaryConfig.flowerBiome
                         + "  coast +/- " + settings.coastlineAmplitude);
+        System.out.println(
+                "Continent radius " + OceanBoundaryConfig.continentalRadius
+                        + "  beta " + OceanBoundaryConfig.betaEnd
+                        + "  continents " + OceanBoundaryConfig.continentEnd
+                        + "  climate " + OceanBoundaryConfig.climateStart + "-" + OceanBoundaryConfig.climateEnd
+                        + "  dry " + OceanBoundaryConfig.dryStart + "-" + OceanBoundaryConfig.dryEnd
+                        + "  sea " + OceanBoundaryConfig.centralSea
+                        + "  rivers " + OceanBoundaryConfig.riverWidth);
 
         long seed = Long.parseLong(option(args, "--seed", "0"));
         int radius = Integer.parseInt(option(args, "--radius", defaultRadius(settings)));
@@ -152,6 +179,11 @@ public final class OceanBoundaryPreview {
         byte[] biomes = new byte[count * 256];
         OceanBoundaryConfig.centerX = settings.centerX;
         OceanBoundaryConfig.centerZ = settings.centerZ;
+        OceanBoundaryConfig.circular = settings.circular;
+        OceanBoundaryConfig.coastlineNoise = settings.coastlineNoise;
+        OceanBoundaryConfig.coastlineAmplitude = settings.coastlineAmplitude;
+        OceanBoundaryConfig.seaLevel = settings.seaLevel;
+        OceanBoundaryConfig.fullOceanRadius = settings.fullOceanRadius;
         BetaClimate.setSeed(seed);
         sampleChunks(owgJar, seed, uniqueX, uniqueZ, count, heights, biomes, threads);
 
@@ -790,8 +822,8 @@ public final class OceanBoundaryPreview {
 
     private static OceanBoundaryMath.Settings defaults() {
         OceanBoundaryMath.Settings settings = new OceanBoundaryMath.Settings();
-        settings.transitionStart = 4000;
-        settings.fullOceanRadius = 5000;
+        settings.transitionStart = OceanBoundaryConfig.DEFAULT_LAND;
+        settings.fullOceanRadius = OceanBoundaryConfig.DEFAULT_LAND + OceanBoundaryConfig.DEFAULT_FADE;
         settings.seaLevel = 64;
         settings.oceanFloor = 48;
         settings.oceanFloorVariation = 5;
@@ -800,14 +832,17 @@ public final class OceanBoundaryPreview {
         settings.coastlineScale = 0.0015D;
         settings.circular = true;
         settings.useDeepOcean = true;
-        settings.deepOceanStart = 5500;
+        settings.deepOceanStart = OceanBoundaryConfig.DEFAULT_LAND
+                + OceanBoundaryConfig.DEFAULT_FADE
+                + OceanBoundaryConfig.DEFAULT_SHALLOW;
         settings.deepOceanFloor = 33;
         settings.deepOceanTransition = 20;
-        settings.iceWallGap = 1536;
-        settings.iceSnowLead = 200;
-        settings.icebergLead = 600;
-        settings.iceShelfLength = 256;
-        settings.bedrockRun = 256;
+        settings.iceWallGap = OceanBoundaryConfig.DEFAULT_DEEP;
+        settings.iceSnowLead = OceanBoundaryConfig.DEFAULT_FROZEN;
+        settings.icebergLead = OceanBoundaryConfig.DEFAULT_ICEBERG;
+        settings.pyramidInset = OceanBoundaryConfig.DEFAULT_PYRAMID;
+        settings.iceShelfLength = OceanBoundaryConfig.DEFAULT_ICE;
+        settings.bedrockRun = OceanBoundaryConfig.DEFAULT_FLOWER;
         settings.iceWallHeight = 30;
         settings.bedrockExtra = 12;
         settings.iceWaveAmplitude = 48;
@@ -828,20 +863,23 @@ public final class OceanBoundaryPreview {
     private static void applyOverrides(OceanBoundaryMath.Settings settings, String[] args) {
         settings.centerX = integerOption(args, "--centerX", settings.centerX);
         settings.centerZ = integerOption(args, "--centerZ", settings.centerZ);
-        settings.transitionStart = integerOption(args, "--transitionStart", settings.transitionStart);
-        settings.fullOceanRadius = integerOption(args, "--fullOceanRadius", settings.fullOceanRadius);
+        OceanBoundaryConfig.landRadius = integerOption(args, "--landRadius", OceanBoundaryConfig.landRadius);
+        OceanBoundaryConfig.coastFade = integerOption(args, "--coastFade", OceanBoundaryConfig.coastFade);
+        OceanBoundaryConfig.shallowOcean = integerOption(args, "--shallowOcean", OceanBoundaryConfig.shallowOcean);
+        OceanBoundaryConfig.deepOcean = integerOption(args, "--deepOcean", OceanBoundaryConfig.deepOcean);
+        OceanBoundaryConfig.iceBeyond = integerOption(args, "--iceBeyond", OceanBoundaryConfig.iceBeyond);
+        OceanBoundaryConfig.flowerBiome = integerOption(args, "--flowerBiome", OceanBoundaryConfig.flowerBiome);
+        OceanBoundaryConfig.frozenLead = integerOption(args, "--frozenLead", OceanBoundaryConfig.frozenLead);
+        OceanBoundaryConfig.icebergReach = integerOption(args, "--icebergLead", OceanBoundaryConfig.icebergReach);
+        OceanBoundaryConfig.pyramidInset = integerOption(args, "--pyramidInset", OceanBoundaryConfig.pyramidInset);
         settings.seaLevel = integerOption(args, "--seaLevel", settings.seaLevel);
         settings.oceanFloor = integerOption(args, "--oceanFloor", settings.oceanFloor);
         settings.oceanFloorVariation = integerOption(args, "--oceanFloorVariation", settings.oceanFloorVariation);
         settings.coastlineAmplitude = integerOption(args, "--coastlineAmplitude", settings.coastlineAmplitude);
-        settings.deepOceanStart = integerOption(args, "--deepOceanStart", settings.deepOceanStart);
         settings.deepOceanFloor = integerOption(args, "--deepOceanFloor", settings.deepOceanFloor);
-        settings.deepOceanTransition = integerOption(args, "--deepOceanTransition", settings.deepOceanTransition);
-        settings.iceWallGap = integerOption(args, "--iceWallGap", settings.iceWallGap);
-        settings.iceSnowLead = integerOption(args, "--iceSnowLead", settings.iceSnowLead);
-        settings.icebergLead = integerOption(args, "--icebergLead", settings.icebergLead);
-        settings.iceShelfLength = integerOption(args, "--iceShelfLength", settings.iceShelfLength);
-        settings.bedrockRun = integerOption(args, "--bedrockRun", settings.bedrockRun);
+        settings.deepOceanTransition = integerOption(
+                args, "--deepSlope", integerOption(args, "--deepOceanTransition", settings.deepOceanTransition));
+        OceanBoundaryConfig.deepOceanTransition = settings.deepOceanTransition;
         settings.iceWallHeight = integerOption(args, "--iceWallHeight", settings.iceWallHeight);
         settings.bedrockExtra = integerOption(args, "--bedrockExtra", settings.bedrockExtra);
         settings.iceWaveAmplitude = integerOption(args, "--iceWaveAmplitude", settings.iceWaveAmplitude);
@@ -862,12 +900,22 @@ public final class OceanBoundaryPreview {
         if (deep != null) {
             settings.useDeepOcean = Boolean.parseBoolean(deep);
         }
+        OceanBoundaryConfig.betaEndPercent = floatOption(args, "--betaEnd", OceanBoundaryConfig.betaEndPercent);
+        OceanBoundaryConfig.continentEndPercent = floatOption(args, "--continentEnd", OceanBoundaryConfig.continentEndPercent);
+        OceanBoundaryConfig.climateStartPercent = floatOption(args, "--climateStart", OceanBoundaryConfig.climateStartPercent);
+        OceanBoundaryConfig.climateEndPercent = floatOption(args, "--climateEnd", OceanBoundaryConfig.climateEndPercent);
+        OceanBoundaryConfig.dryStartPercent = floatOption(args, "--dryStart", OceanBoundaryConfig.dryStartPercent);
+        OceanBoundaryConfig.dryEndPercent = floatOption(args, "--dryEnd", OceanBoundaryConfig.dryEndPercent);
+        OceanBoundaryConfig.centralSea = integerOption(args, "--centralSea", OceanBoundaryConfig.centralSea);
+        OceanBoundaryConfig.riverWidth = integerOption(args, "--riverWidth", OceanBoundaryConfig.riverWidth);
     }
 
     private static void applyConfig(OceanBoundaryMath.Settings settings, File file) throws IOException {
         Map<String, String> values = new HashMap<String, String>();
+        Map<String, String> continent = new HashMap<String, String>();
+        Map<String, String> inland = new HashMap<String, String>();
         BufferedReader reader = new BufferedReader(new FileReader(file));
-        boolean inCategory = false;
+        String category = "";
         try {
             String line;
             while ((line = reader.readLine()) != null) {
@@ -876,15 +924,16 @@ public final class OceanBoundaryPreview {
                     line = line.substring(0, comment);
                 }
                 line = line.trim();
-                if (line.startsWith("ocean_boundary")) {
-                    inCategory = true;
-                    continue;
-                }
-                if (!inCategory) {
+                if (line.endsWith("{")) {
+                    category = line.substring(0, line.length() - 1).trim();
                     continue;
                 }
                 if (line.startsWith("}")) {
-                    break;
+                    category = "";
+                    continue;
+                }
+                if (category.length() == 0) {
+                    continue;
                 }
                 int split = line.indexOf('=');
                 if (split <= 0) {
@@ -895,7 +944,14 @@ public final class OceanBoundaryPreview {
                 if (colon >= 0) {
                     key = key.substring(colon + 1);
                 }
-                values.put(key, line.substring(split + 1).trim());
+                String value = line.substring(split + 1).trim();
+                if ("continent".equals(category)) {
+                    continent.put(key, value);
+                } else if ("inland".equals(category)) {
+                    inland.put(key, value);
+                } else if ("ocean_boundary".equals(category)) {
+                    values.put(key, value);
+                }
             }
         } finally {
             reader.close();
@@ -903,25 +959,54 @@ public final class OceanBoundaryPreview {
 
         settings.centerX = configInt(values, "centerX", settings.centerX);
         settings.centerZ = configInt(values, "centerZ", settings.centerZ);
-        settings.transitionStart = configInt(values, "transitionStart", settings.transitionStart);
-        settings.fullOceanRadius = configInt(values, "fullOceanRadius", settings.fullOceanRadius);
+        if (values.containsKey("landRadius")) {
+            OceanBoundaryConfig.landRadius = configInt(values, "landRadius", OceanBoundaryConfig.landRadius);
+            OceanBoundaryConfig.coastFade = configInt(values, "coastFade", OceanBoundaryConfig.coastFade);
+            OceanBoundaryConfig.shallowOcean = configInt(values, "shallowOcean", OceanBoundaryConfig.shallowOcean);
+            OceanBoundaryConfig.deepOcean = configInt(values, "deepOcean", OceanBoundaryConfig.deepOcean);
+            OceanBoundaryConfig.iceBeyond = configInt(values, "iceBeyond", OceanBoundaryConfig.iceBeyond);
+            OceanBoundaryConfig.flowerBiome = configInt(values, "flowerBiome", OceanBoundaryConfig.flowerBiome);
+            OceanBoundaryConfig.frozenLead = configInt(values, "frozenLead", OceanBoundaryConfig.frozenLead);
+            OceanBoundaryConfig.icebergReach = configInt(values, "icebergLead", OceanBoundaryConfig.icebergReach);
+            OceanBoundaryConfig.pyramidInset = configInt(values, "pyramidInset", OceanBoundaryConfig.pyramidInset);
+        } else {
+            int land = configInt(values, "transitionStart", OceanBoundaryConfig.landRadius);
+            int shore = configInt(values, "fullOceanRadius", land + OceanBoundaryConfig.coastFade);
+            int deepStart = configInt(values, "deepOceanStart", shore + OceanBoundaryConfig.shallowOcean);
+            OceanBoundaryConfig.landRadius = land;
+            OceanBoundaryConfig.coastFade = shore > land ? shore - land : 0;
+            OceanBoundaryConfig.shallowOcean = deepStart > shore ? deepStart - shore : 0;
+            OceanBoundaryConfig.deepOcean = configInt(values, "iceWallGap", OceanBoundaryConfig.deepOcean);
+            OceanBoundaryConfig.iceBeyond = configInt(values, "iceShelfLength", OceanBoundaryConfig.iceBeyond);
+            OceanBoundaryConfig.flowerBiome = configInt(values, "bedrockRun", OceanBoundaryConfig.flowerBiome);
+            OceanBoundaryConfig.frozenLead = configInt(values, "iceSnowLead", OceanBoundaryConfig.frozenLead);
+            OceanBoundaryConfig.icebergReach = configInt(values, "icebergLead", OceanBoundaryConfig.icebergReach);
+            OceanBoundaryConfig.pyramidInset = OceanBoundaryConfig.deepOcean / 2;
+        }
         settings.seaLevel = configInt(values, "seaLevel", settings.seaLevel);
         settings.oceanFloor = configInt(values, "oceanFloor", settings.oceanFloor);
         settings.oceanFloorVariation = configInt(values, "oceanFloorVariation", settings.oceanFloorVariation);
         settings.coastlineAmplitude = configInt(values, "coastlineAmplitude", settings.coastlineAmplitude);
-        settings.deepOceanStart = configInt(values, "deepOceanStart", settings.deepOceanStart);
         settings.deepOceanFloor = configInt(values, "deepOceanFloor", settings.deepOceanFloor);
-        settings.deepOceanTransition = configInt(values, "deepOceanTransition", settings.deepOceanTransition);
-        settings.iceWallGap = configInt(values, "iceWallGap", settings.iceWallGap);
-        settings.iceSnowLead = configInt(values, "iceSnowLead", settings.iceSnowLead);
-        settings.icebergLead = configInt(values, "icebergLead", settings.icebergLead);
-        settings.iceShelfLength = configInt(values, "iceShelfLength", settings.iceShelfLength);
-        settings.bedrockRun = configInt(values, "bedrockRun", settings.bedrockRun);
+        if (values.containsKey("deepSlope")) {
+            settings.deepOceanTransition = configInt(values, "deepSlope", settings.deepOceanTransition);
+        } else {
+            settings.deepOceanTransition = configInt(values, "deepOceanTransition", settings.deepOceanTransition);
+        }
+        OceanBoundaryConfig.deepOceanTransition = settings.deepOceanTransition;
         settings.iceWallHeight = configInt(values, "iceWallHeight", settings.iceWallHeight);
         settings.bedrockExtra = configInt(values, "bedrockExtra", settings.bedrockExtra);
         settings.iceWaveAmplitude = configInt(values, "iceWaveAmplitude", settings.iceWaveAmplitude);
         settings.iceHeightJitter = configInt(values, "iceHeightJitter", settings.iceHeightJitter);
         settings.coastlineScale = configDouble(values, "coastlineScale", settings.coastlineScale);
+        OceanBoundaryConfig.betaEndPercent = configFloat(continent, "betaEnd", OceanBoundaryConfig.betaEndPercent);
+        OceanBoundaryConfig.continentEndPercent = configFloat(continent, "continentEnd", OceanBoundaryConfig.continentEndPercent);
+        OceanBoundaryConfig.climateStartPercent = configFloat(continent, "climateStart", OceanBoundaryConfig.climateStartPercent);
+        OceanBoundaryConfig.climateEndPercent = configFloat(continent, "climateEnd", OceanBoundaryConfig.climateEndPercent);
+        OceanBoundaryConfig.dryStartPercent = configFloat(continent, "dryStart", OceanBoundaryConfig.dryStartPercent);
+        OceanBoundaryConfig.dryEndPercent = configFloat(continent, "dryEnd", OceanBoundaryConfig.dryEndPercent);
+        OceanBoundaryConfig.centralSea = configInt(inland, "centralSea", OceanBoundaryConfig.centralSea);
+        OceanBoundaryConfig.riverWidth = configInt(inland, "riverWidth", OceanBoundaryConfig.riverWidth);
         settings.circular = configBoolean(values, "circular", settings.circular);
         settings.coastlineNoise = configBoolean(values, "coastlineNoise", settings.coastlineNoise);
         settings.useDeepOcean = configBoolean(values, "useDeepOcean", settings.useDeepOcean);
@@ -932,6 +1017,11 @@ public final class OceanBoundaryPreview {
         return value == null ? fallback : Integer.parseInt(value);
     }
 
+    private static float configFloat(Map<String, String> values, String key, float fallback) {
+        String value = values.get(key);
+        return value == null ? fallback : Float.parseFloat(value);
+    }
+
     private static double configDouble(Map<String, String> values, String key, double fallback) {
         String value = values.get(key);
         return value == null ? fallback : Double.parseDouble(value);
@@ -940,6 +1030,11 @@ public final class OceanBoundaryPreview {
     private static boolean configBoolean(Map<String, String> values, String key, boolean fallback) {
         String value = values.get(key);
         return value == null ? fallback : Boolean.parseBoolean(value);
+    }
+
+    private static float floatOption(String[] args, String name, float fallback) {
+        String value = option(args, name);
+        return value == null ? fallback : Float.parseFloat(value);
     }
 
     private static int integerOption(String[] args, String name, int fallback) {

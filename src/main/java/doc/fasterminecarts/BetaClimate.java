@@ -1,19 +1,14 @@
 package doc.fasterminecarts;
 
 /**
- * Beta 1.7.3 terrain stays as generated at the world center. Farther out the
- * landmasses widen, north rises into cold plateaus, and south lowers into hot
- * dunes. Humidity follows beta's own chart: wet near the center latitude, dry
- * toward the far north and south.
+ * Beta 1.7.3 terrain stays as generated inside a radius of the world origin,
+ * aside from the inland sea and the rivers that leave it. That origin is
+ * spawn. Shifting the continent center does not move this radius. Farther
+ * out the landmasses widen, north rises into cold plateaus, and south lowers
+ * into hot dunes. Humidity follows beta's own chart: wet near the center
+ * latitude, dry toward the far north and south.
  */
 public final class BetaClimate {
-    private static final double CONTINENT_START = 450.0D;
-    private static final double CONTINENT_END = 1500.0D;
-    private static final double LATITUDE_START = 600.0D;
-    private static final double LATITUDE_END = 2600.0D;
-    private static final double DRY_START = 2000.0D;
-    private static final double DRY_END = 3200.0D;
-
     private static long seed;
 
     private BetaClimate() {
@@ -21,9 +16,13 @@ public final class BetaClimate {
 
     static void setSeed(long worldSeed) {
         seed = worldSeed;
+        InlandWater.bind(worldSeed);
     }
 
     public static double temperature(int x, int z, double base) {
+        if (pureBeta(x, z)) {
+            return clamp01(base);
+        }
         int latitude = latitude(x, z);
         double north = northOf(latitude);
         double south = southOf(latitude);
@@ -34,6 +33,9 @@ public final class BetaClimate {
     }
 
     public static double humidity(int x, int z, double base) {
+        if (pureBeta(x, z)) {
+            return clamp01(base);
+        }
         double dry = dryness(latitude(x, z));
         double wet = base * 0.25D + 0.82D;
         if (wet > 1.0D) {
@@ -43,6 +45,17 @@ public final class BetaClimate {
     }
 
     public static double shapeDepth(int x, int z, double depth) {
+        return InlandWater.carveDepth(x, z, continentalDepth(x, z, depth));
+    }
+
+    public static double shapeHeight(int x, int z, double center) {
+        return InlandWater.carveHeight(x, z, continentalHeight(x, z, center));
+    }
+
+    private static double continentalDepth(int x, int z, double depth) {
+        if (pureBeta(x, z)) {
+            return depth;
+        }
         double continental = continental(x, z);
         double north = northOf(z);
         double south = southOf(z);
@@ -59,7 +72,10 @@ public final class BetaClimate {
         return shaped;
     }
 
-    public static double shapeHeight(int x, int z, double center) {
+    private static double continentalHeight(int x, int z, double center) {
+        if (pureBeta(x, z)) {
+            return center;
+        }
         double north = northOf(z);
         double south = southOf(z);
         if (north <= 0.0D && south <= 0.0D) {
@@ -73,10 +89,27 @@ public final class BetaClimate {
         return center + north * lift + south * dune * 1.8D;
     }
 
+    /**
+     * True inside the pure beta radius. That circle is centered on the world
+     * origin. When the continent center is the origin too, the older path in
+     * {@link #continental(int, int)} already protects the same circle.
+     */
+    private static boolean pureBeta(int x, int z) {
+        if (OceanBoundaryConfig.centerX == 0 && OceanBoundaryConfig.centerZ == 0) {
+            return false;
+        }
+        double radius = OceanBoundaryConfig.betaEnd;
+        return (double) x * x + (double) z * z <= radius * radius;
+    }
+
     private static double continental(int x, int z) {
         double dx = x - OceanBoundaryConfig.centerX;
         double dz = z - OceanBoundaryConfig.centerZ;
-        return smooth(Math.sqrt(dx * dx + dz * dz), CONTINENT_START, CONTINENT_END);
+        int inner = OceanBoundaryConfig.betaEnd;
+        if (OceanBoundaryConfig.centerX != 0 || OceanBoundaryConfig.centerZ != 0) {
+            inner = 0;
+        }
+        return smooth(Math.sqrt(dx * dx + dz * dz), inner, OceanBoundaryConfig.continentEnd);
     }
 
     private static int latitude(int x, int z) {
@@ -85,11 +118,11 @@ public final class BetaClimate {
     }
 
     private static double northOf(int z) {
-        return smooth(OceanBoundaryConfig.centerZ - z, LATITUDE_START, LATITUDE_END);
+        return smooth(OceanBoundaryConfig.centerZ - z, OceanBoundaryConfig.climateStart, OceanBoundaryConfig.climateEnd);
     }
 
     private static double southOf(int z) {
-        return smooth(z - OceanBoundaryConfig.centerZ, LATITUDE_START, LATITUDE_END);
+        return smooth(z - OceanBoundaryConfig.centerZ, OceanBoundaryConfig.climateStart, OceanBoundaryConfig.climateEnd);
     }
 
     private static double dryness(int z) {
@@ -97,7 +130,7 @@ public final class BetaClimate {
         if (dz < 0.0D) {
             dz = -dz;
         }
-        return smooth(dz, DRY_START, DRY_END);
+        return smooth(dz, OceanBoundaryConfig.dryStart, OceanBoundaryConfig.dryEnd);
     }
 
     private static double smooth(double value, double start, double end) {

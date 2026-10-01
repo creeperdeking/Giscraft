@@ -65,7 +65,7 @@ Press Ctrl+Shift+D, choose Attach to Minecraft (5005), then press F5.
 
 ## Map preview
 
-`OceanBoundaryPreview` draws a top-down picture of a seed after the climate shift and the ocean boundary. The center stays beta 1.7.3. By about 1500 blocks the landmasses widen. North rises into cold plateaus, south rolls into hot dunes, and the beta biome chart gets wetter near the center latitude and drier toward the far north and south. Run it with Java 8 against the built jar:
+`OceanBoundaryPreview` draws a top-down picture of a seed after the climate shift and the ocean boundary. A sea 800 blocks across sits at the center. Four rivers, each 64 blocks wide, wind from that sea out to the ocean, one toward each pyramid. Pure beta terrain is a circle around the world origin. Shifting `centerX` and `centerZ` moves the continent, the sea, and the climate, and leaves that circle on spawn. When the continent center is the origin, the land around the sea stays beta 1.7.3 until the climate shift. Each world ring is a width in blocks added onto the ring inside it: whole continent, fade to sea, shallow ocean, deep ocean, ice wall, then the outer flower meadow. Biome zones are a percentage of that coastline (100 is where the continent has faded to sea). With the defaults the coast is 5000 blocks out, pure beta ends at 9%, wider landmasses finish at 30%, the north-south climate runs from 12% to 52%, and the dry north and south run from 40% to 64%. Run it with Java 8 against the built jar:
 
 ```text
 java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --seed 8675309 --out terrain-preview.png
@@ -79,14 +79,14 @@ Colors:
 - light green: open grassland (plains, savanna, shrubland)
 - dark green: forest (forest, seasonal forest, rainforest, swamp)
 - yellow: desert
-- blue: water, including beta oceans and the boundary ocean
+- blue: water, including the central sea, the four rivers, beta oceans, and the boundary ocean
 - dark blue: deep ocean, about 30 blocks of water, reached across a 20-block slope
 - pale blue: frozen ocean, the 200 blocks of snow before the ice wall
 - white: the ice wall, about 30 blocks above the sea, with an angular jagged border and an eroded lip
 - gray: bare bedrock for 256 blocks after the ice
 - black: the void past the bedrock
 
-After 1536 blocks of deep ocean the ice wall rises from the sea floor. Bedrock climbs under the ice for 256 blocks, overtakes it, then runs flat for another 256 blocks and stops. Beyond that the world is empty and players fall. There is no wrap.
+The deep ocean is another 1536 blocks, then the ice wall and the shelf beyond it for 256, then the flower meadow for 256. Beyond that the world is empty and players fall. There is no wrap. The frozen surface and the icebergs are measured inward from the ice wall, 200 and 600 blocks. The pyramids sit 768 blocks inward from that wall.
 
 A default terrain map is 320 pixels on a side and takes about a minute. `--pixels 640` is sharper and takes a few minutes. `--zone` skips the terrain and draws only the ocean zones, which is immediate.
 
@@ -103,21 +103,30 @@ With no `--config`, the tool reads `Instances/1.7.10/config/giscraft.cfg` when t
 --threads <n>              sampling threads (default: all processors)
 --centerX <blocks>
 --centerZ <blocks>
---transitionStart <blocks>
---fullOceanRadius <blocks>
+--landRadius <blocks>         continent still whole
+--coastFade <blocks>          added until the continent has faded to sea
+--shallowOcean <blocks>       added shallow water
+--deepOcean <blocks>          added deep water before the ice wall
+--iceBeyond <blocks>          added ice wall and shelf
+--flowerBiome <blocks>        added outer flower meadow
+--frozenLead <blocks>         frozen surface, inward from the ice wall
+--icebergLead <blocks>        icebergs, inward from the ice wall
+--pyramidInset <blocks>       pyramids, inward from the ice wall
+--deepSlope <blocks>          seabed drop at the outer end of the shallow ocean
+--betaEnd <percent>           pure beta ends here
+--continentEnd <percent>      wider landmasses are complete
+--climateStart <percent>      north cools and south warms
+--climateEnd <percent>        north is fully cold and south is fully hot
+--dryStart <percent>          far north and south start drying
+--dryEnd <percent>            far north and south are fully dry
+--centralSea <blocks>         diameter of the sea at the world center
+--riverWidth <blocks>         width of each river out to the ocean
 --seaLevel <blocks>
 --oceanFloor <blocks>
 --oceanFloorVariation <blocks>
 --coastlineAmplitude <blocks>
 --coastlineScale <number>
---deepOceanStart <blocks>
 --deepOceanFloor <blocks>
---deepOceanTransition <blocks>
---iceWallGap <blocks>
---iceSnowLead <blocks>
---icebergLead <blocks>
---iceShelfLength <blocks>
---bedrockRun <blocks>
 --iceWallHeight <blocks>
 --bedrockExtra <blocks>
 --iceWaveAmplitude <blocks>
@@ -127,8 +136,8 @@ With no `--config`, the tool reads `Instances/1.7.10/config/giscraft.cfg` when t
 --useDeepOcean true|false
 ```
 
-Example with a config file and a wider transition:
+Example with a config file and a wider continent:
 
 ```text
-java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --config config/giscraft.cfg --transitionStart 6000 --fullOceanRadius 8000 --out wide-preview.png
+java -cp build/libs/Giscraft-1.3.15.jar doc.fasterminecarts.OceanBoundaryPreview --config config/giscraft.cfg --landRadius 6000 --coastFade 2000 --out wide-preview.png
 ```

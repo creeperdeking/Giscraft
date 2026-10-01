@@ -20,6 +20,7 @@ final class OceanBoundaryMath {
         int iceWallGap;
         int iceSnowLead;
         int icebergLead;
+        int pyramidInset;
         int iceShelfLength;
         int bedrockRun;
         int iceWallHeight;
@@ -271,39 +272,68 @@ final class OceanBoundaryMath {
     private static int pyramidCenterDistance(Settings settings) {
         int inner = deepEdge(settings);
         int outer = inner + settings.iceWallGap;
-        int mid = inner + (outer - inner) / 2;
         int radius = pyramidRadius(settings);
+        int reach = pyramidClearance(settings, radius);
+        int mid = outer - settings.pyramidInset;
         int earliestIce = outer - settings.iceWaveAmplitude - settings.icebergLead;
-        if (mid + radius > earliestIce - 24) {
-            mid = earliestIce - 24 - radius;
+        if (mid + reach > earliestIce - 24) {
+            mid = earliestIce - 24 - reach;
         }
-        int minCenter = inner + radius + 24;
+        int minCenter = inner + reach + 24;
         if (mid < minCenter) {
             mid = minCenter;
+        }
+        int maxCenter = outer - reach - 24;
+        if (maxCenter < minCenter) {
+            return inner + Math.max(0, outer - inner) / 2;
+        }
+        if (mid > maxCenter) {
+            mid = maxCenter;
         }
         return mid;
     }
 
-    private static int pyramidCenterX(int index, Settings settings) {
+    /**
+     * How far an axis-aligned pyramid extends from its center toward the ice
+     * and the shore. On a circle the center sits on a diagonal, so the corner
+     * is farther out than the flat face.
+     */
+    private static int pyramidClearance(Settings settings, int radius) {
+        if (!settings.circular) {
+            return radius;
+        }
+        return (int) Math.ceil(radius * Math.sqrt(2.0D));
+    }
+
+    /**
+     * Block offset from the world center to a pyramid center. A circular
+     * boundary measures that distance straight out, so the diagonal step is
+     * shorter. A square boundary measures the farther axis, so the step is
+     * the full distance.
+     */
+    private static int pyramidDiagonalStep(Settings settings) {
         int mid = pyramidCenterDistance(settings);
-        if (index == 1) {
-            return settings.centerX + mid;
+        if (!settings.circular) {
+            return mid;
         }
-        if (index == 3) {
-            return settings.centerX - mid;
+        return (int) Math.round(mid / Math.sqrt(2.0D));
+    }
+
+    /** Index 0 northeast, 1 southeast, 2 southwest, 3 northwest. North is negative Z. */
+    private static int pyramidCenterX(int index, Settings settings) {
+        int step = pyramidDiagonalStep(settings);
+        if (index == 0 || index == 1) {
+            return settings.centerX + step;
         }
-        return settings.centerX;
+        return settings.centerX - step;
     }
 
     private static int pyramidCenterZ(int index, Settings settings) {
-        int mid = pyramidCenterDistance(settings);
-        if (index == 0) {
-            return settings.centerZ - mid;
+        int step = pyramidDiagonalStep(settings);
+        if (index == 0 || index == 3) {
+            return settings.centerZ - step;
         }
-        if (index == 2) {
-            return settings.centerZ + mid;
-        }
-        return settings.centerZ;
+        return settings.centerZ + step;
     }
 
     static boolean chunkReachesIcebergs(int originX, int originZ, Settings settings) {

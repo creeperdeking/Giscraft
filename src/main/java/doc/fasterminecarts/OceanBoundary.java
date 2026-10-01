@@ -34,6 +34,9 @@ final class OceanBoundary {
         int originX = chunk.xPosition << 4;
         int originZ = chunk.zPosition << 4;
         if (chunkIsInside(originX, originZ, settings)) {
+            if (carveInland(chunk, seed)) {
+                finishChunk(chunk);
+            }
             return;
         }
 
@@ -92,14 +95,12 @@ final class OceanBoundary {
             }
         }
 
-        if (!changed) {
+        boolean inland = carveInland(chunk, seed);
+        if (!changed && !inland) {
             return;
         }
 
-        removeOrphanTileEntities(chunk);
-        discardEmptySections(chunk);
-        chunk.generateSkylightMap();
-        chunk.isModified = true;
+        finishChunk(chunk);
 
         if (OceanBoundaryConfig.debugLogging) {
             LOG.info(
@@ -107,6 +108,41 @@ final class OceanBoundary {
                     Integer.valueOf(chunk.xPosition),
                     Integer.valueOf(chunk.zPosition));
         }
+    }
+
+    private static void finishChunk(Chunk chunk) {
+        removeOrphanTileEntities(chunk);
+        discardEmptySections(chunk);
+        chunk.generateSkylightMap();
+        chunk.isModified = true;
+    }
+
+    private static boolean carveInland(Chunk chunk, long seed) {
+        int originX = chunk.xPosition << 4;
+        int originZ = chunk.zPosition << 4;
+        if (!InlandWater.reachesChunk(originX, originZ)) {
+            return false;
+        }
+        byte[] biomes = chunk.getBiomeArray();
+        int seaBiome = BiomeGenBase.ocean.biomeID;
+        int riverBiome = BiomeGenBase.river == null ? seaBiome : BiomeGenBase.river.biomeID;
+        boolean changed = false;
+        for (int localX = 0; localX < 16; localX++) {
+            for (int localZ = 0; localZ < 16; localZ++) {
+                int worldX = originX + localX;
+                int worldZ = originZ + localZ;
+                int kind = InlandWater.openKind(worldX, worldZ);
+                if (kind == InlandWater.NONE) {
+                    continue;
+                }
+                int surface = findSurface(chunk, localX, localZ);
+                int floor = InlandWater.floorY(worldX, worldZ);
+                reshapeColumn(chunk, localX, localZ, worldX, worldZ, seed, surface, floor);
+                biomes[(localZ << 4) | localX] = (byte) (kind == InlandWater.SEA ? seaBiome : riverBiome);
+                changed = true;
+            }
+        }
+        return changed;
     }
 
     static void stripOres(Chunk chunk, long seed) {

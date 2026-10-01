@@ -31,6 +31,7 @@ final class OceanBoundaryProvider implements IChunkProvider {
         if (OceanBoundaryMath.isChunkFullyVoid(x, z, settings)) {
             return OceanBoundary.voidChunk(world, x, z);
         }
+        BetaClimate.setSeed(seed);
         Chunk chunk = delegate.provideChunk(x, z);
         OceanBoundary.apply(chunk, seed);
         if (OceanBoundaryMath.isChunkPastSnow(x, z, settings)) {
