@@ -15,13 +15,25 @@ final class InlandWater {
     private static final double[] DIR_X = {DIAGONAL, DIAGONAL, -DIAGONAL, -DIAGONAL};
     private static final double[] DIR_Z = {-DIAGONAL, DIAGONAL, DIAGONAL, -DIAGONAL};
 
+    private static final double MAX_WIDTH_SCALE = 1.14D;
+    private static final double MAX_FLARE = 2.15D;
+
     private static long seed;
+    private static final ThreadLocal<Cache> CACHE = new ThreadLocal<Cache>() {
+        @Override
+        protected Cache initialValue() {
+            return new Cache();
+        }
+    };
 
     private InlandWater() {
     }
 
     static void bind(long worldSeed) {
-        seed = worldSeed;
+        if (seed != worldSeed) {
+            seed = worldSeed;
+            CACHE.get().valid = false;
+        }
     }
 
     static double carveDepth(int x, int z, double scale) {
@@ -58,7 +70,10 @@ final class InlandWater {
                 }
             }
         }
-        return closest <= limit;
+        if (closest > limit) {
+            return false;
+        }
+        return chunkTouchesSea(originX, originZ) || chunkTouchesRiver(originX, originZ);
     }
 
     /** Open water only: the sea, or the full width of a river, not the sloping bank. */
@@ -92,8 +107,20 @@ final class InlandWater {
     }
 
     private static Place place(int x, int z) {
-        Place place = new Place();
-        if (boundaryDistance(x, z) > coastReach() + 48.0D) {
+        Cache cache = CACHE.get();
+        if (cache.valid && cache.x == x && cache.z == z) {
+            return cache.place;
+        }
+        Place place = cache.place;
+        place.cover = 0.0D;
+        place.seaOpen = false;
+        place.riverOpen = false;
+        double reach = coastReach();
+        double boundary = boundaryDistance(x, z);
+        if (boundary > reach + 48.0D) {
+            cache.x = x;
+            cache.z = z;
+            cache.valid = true;
             return place;
         }
         double dx = x - OceanBoundaryConfig.centerX;
@@ -102,25 +129,28 @@ final class InlandWater {
 
         double seaRadius = seaRadius();
         if (seaRadius > 0.0D) {
-            double edge = shoreEdge(dx, dz, dist, seaRadius);
             double shore = shoreWidth(seaRadius);
-            if (dist <= edge) {
-                place.seaOpen = true;
-                place.cover = 1.0D;
-            } else if (dist < edge + shore) {
-                place.cover = 1.0D - smooth(dist, edge, edge + shore);
+            double outer = seaRadius + seaRadius * 0.16D + shore;
+            if (dist < outer) {
+                double edge = shoreEdge(dx, dz, dist, seaRadius);
+                if (dist <= edge) {
+                    place.seaOpen = true;
+                    place.cover = 1.0D;
+                } else if (dist < edge + shore) {
+                    place.cover = 1.0D - smooth(dist, edge, edge + shore);
+                }
             }
         }
 
-        double reach = coastReach();
-        if (boundaryDistance(x, z) > reach) {
+        if (boundary > reach) {
+            cache.x = x;
+            cache.z = z;
+            cache.valid = true;
             return place;
         }
         double half = halfWidth();
-        double bank = half * 0.45D;
-        if (bank < 14.0D) {
-            bank = 14.0D;
-        }
+        double bank = bankWidth(half);
+        double pad = half * MAX_WIDTH_SCALE * MAX_FLARE + bank;
         double mouth = seaRadius * 0.62D;
         for (int index = 0; index < RIVERS; index++) {
             double along = dx * DIR_X[index] + dz * DIR_Z[index];
@@ -128,6 +158,9 @@ final class InlandWater {
                 continue;
             }
             double across = dx * -DIR_Z[index] + dz * DIR_X[index];
+            if (Math.abs(across) > wanderCap(along) + pad) {
+                continue;
+            }
             double wander = wander(along, index);
             double delta = Math.abs(across - wander);
             double channel = half * widthScale(along, index) * flare(along, seaRadius, dist, reach);
@@ -149,7 +182,73 @@ final class InlandWater {
                 place.riverOpen = true;
             }
         }
+        cache.x = x;
+        cache.z = z;
+        cache.valid = true;
         return place;
+    }
+
+    private static boolean chunkTouchesSea(int originX, int originZ) {
+        double radius = seaRadius();
+        if (radius <= 0.0D) {
+            return false;
+        }
+        double outer = radius + radius * 0.16D + shoreWidth(radius);
+        int nearX = nearest(OceanBoundaryConfig.centerX, originX);
+        int nearZ = nearest(OceanBoundaryConfig.centerZ, originZ);
+        double dx = nearX - OceanBoundaryConfig.centerX;
+        double dz = nearZ - OceanBoundaryConfig.centerZ;
+        return dx * dx + dz * dz < outer * outer;
+    }
+
+    private static boolean chunkTouchesRiver(int originX, int originZ) {
+        double half = halfWidth();
+        double pad = half * MAX_WIDTH_SCALE * MAX_FLARE + bankWidth(half);
+        double mouth = seaRadius() * 0.62D;
+        int centerX = OceanBoundaryConfig.centerX;
+        int centerZ = OceanBoundaryConfig.centerZ;
+        for (int index = 0; index < RIVERS; index++) {
+            double dirX = DIR_X[index];
+            double dirZ = DIR_Z[index];
+            double acrossMin = Double.POSITIVE_INFINITY;
+            double acrossMax = Double.NEGATIVE_INFINITY;
+            double alongMax = Double.NEGATIVE_INFINITY;
+            for (int cornerX = 0; cornerX <= 15; cornerX += 15) {
+                for (int cornerZ = 0; cornerZ <= 15; cornerZ += 15) {
+                    double dx = originX + cornerX - centerX;
+                    double dz = originZ + cornerZ - centerZ;
+                    double along = dx * dirX + dz * dirZ;
+                    double across = dx * -dirZ + dz * dirX;
+                    if (along > alongMax) {
+                        alongMax = along;
+                    }
+                    if (across < acrossMin) {
+                        acrossMin = across;
+                    }
+                    if (across > acrossMax) {
+                        acrossMax = across;
+                    }
+                }
+            }
+            if (alongMax < mouth) {
+                continue;
+            }
+            double limit = wanderCap(alongMax) + pad;
+            if (acrossMax >= -limit && acrossMin <= limit) {
+                return true;
+            }
+        }
+        return false;
+    }
+
+    private static int nearest(int center, int origin) {
+        if (center < origin) {
+            return origin;
+        }
+        if (center > origin + 15) {
+            return origin + 15;
+        }
+        return center;
     }
 
     private static double seaRadius() {
@@ -191,7 +290,7 @@ final class InlandWater {
         return radius + wobble;
     }
 
-    private static double wander(double along, int index) {
+    private static double wanderCap(double along) {
         double cap = along * 0.16D;
         if (cap < 28.0D) {
             cap = 28.0D;
@@ -199,6 +298,11 @@ final class InlandWater {
         if (cap > 380.0D) {
             cap = 380.0D;
         }
+        return cap;
+    }
+
+    private static double wander(double along, int index) {
+        double cap = wanderCap(along);
         double slow = OceanBoundaryMath.noise(along * 0.0007D, index * 19.0D, seed ^ 0xA11E0L);
         double mid = OceanBoundaryMath.noise(along * 0.0021D, index * 7.0D, seed ^ 0xB10CL);
         double bend = slow * 0.62D + mid * 0.38D;
@@ -240,6 +344,14 @@ final class InlandWater {
         return width * 0.5D;
     }
 
+    private static double bankWidth(double half) {
+        double bank = half * 0.45D;
+        if (bank < 14.0D) {
+            bank = 14.0D;
+        }
+        return bank;
+    }
+
     private static double coastReach() {
         double reach = OceanBoundaryConfig.fullOceanRadius;
         if (OceanBoundaryConfig.coastlineNoise) {
@@ -272,5 +384,12 @@ final class InlandWater {
         double cover;
         boolean seaOpen;
         boolean riverOpen;
+    }
+
+    private static final class Cache {
+        final Place place = new Place();
+        int x;
+        int z;
+        boolean valid;
     }
 }

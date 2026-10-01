@@ -42,6 +42,8 @@ final class OceanBoundary {
 
         byte[] biomes = chunk.getBiomeArray();
         boolean changed = false;
+        boolean bergs = OceanBoundaryMath.chunkReachesIcebergs(originX, originZ, settings);
+        boolean pyramids = OceanBoundaryMath.chunkReachesPyramid(originX, originZ, settings);
         int oceanBiome = BiomeGenBase.ocean.biomeID;
         int deepBiome = BiomeGenBase.deepOcean == null
                 ? oceanBiome
@@ -76,10 +78,10 @@ final class OceanBoundary {
                     reshapeColumn(chunk, localX, localZ, worldX, worldZ, seed, surface, target);
                     changed = true;
                 }
-                if (writeIceberg(chunk, localX, localZ, worldX, worldZ, seed, settings, floor)) {
+                if (bergs && writeIceberg(chunk, localX, localZ, worldX, worldZ, seed, settings, floor)) {
                     changed = true;
                 }
-                if (writePyramid(chunk, localX, localZ, worldX, worldZ, settings)) {
+                if (pyramids && writePyramid(chunk, localX, localZ, worldX, worldZ, settings)) {
                     changed = true;
                 }
 

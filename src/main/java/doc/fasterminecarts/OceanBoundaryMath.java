@@ -112,7 +112,12 @@ final class OceanBoundaryMath {
     }
 
     static int bandAt(int x, int z, long seed, Settings settings) {
-        double into = intoWall(x, z, seed, settings);
+        double distance = distanceAt(x, z, settings);
+        double wallRadius = iceWallRadius(settings);
+        if (distance + settings.iceWaveAmplitude < wallRadius - settings.iceSnowLead) {
+            return BAND_OCEAN;
+        }
+        double into = distance - wallAt(x, z, seed, settings);
         if (into < -settings.iceSnowLead) {
             return BAND_OCEAN;
         }
